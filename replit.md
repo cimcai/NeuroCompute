@@ -50,6 +50,13 @@ API endpoints proxied through our backend:
 
 Chat messages and AI responses are automatically forwarded to CIMC Open Forum (Room 2) via `POST /api/open-forum/post`.
 
+## Proof of Compute
+- `GET /api/nodes/:id/proof` - Generates a downloadable JSON certificate with HMAC-SHA256 signature
+- `POST /api/verify-proof` - Verifies a proof certificate's signature and returns current node state
+- Certificate includes: node identity, total tokens generated, pixel credits earned/spent, timestamps, network metadata
+- Signature uses SESSION_SECRET via HMAC-SHA256; tamper-evident (verification fails if any field is modified)
+- Download button appears on the Dashboard once a node is registered
+
 ## Token-to-Pixel Economy
 - Exchange rate: 100 tokens generated = 1 pixel credit (configurable via `TOKENS_PER_PIXEL` in schema)
 - Credits accumulate automatically as compute nodes generate tokens

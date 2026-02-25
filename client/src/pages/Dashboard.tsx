@@ -10,13 +10,35 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Paintbrush } from "lucide-react";
+import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Paintbrush, Download, Shield } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function Dashboard() {
   const node = useComputeNode();
 
   const [progressPercent, setProgressPercent] = useState(0);
+  const [downloadingProof, setDownloadingProof] = useState(false);
+
+  const downloadProof = async () => {
+    if (!node.nodeId) return;
+    setDownloadingProof(true);
+    try {
+      const res = await fetch(`/api/nodes/${node.nodeId}/proof`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `neurocompute-proof-${node.nodeName}-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to download proof:", err);
+    } finally {
+      setDownloadingProof(false);
+    }
+  };
 
   useEffect(() => {
     if (node.progressText) {
@@ -113,6 +135,23 @@ export default function Dashboard() {
               >
                 <Square className="mr-2 w-5 h-5 fill-current" />
                 Stop Node
+              </Button>
+            )}
+            {node.nodeId && (
+              <Button
+                size="lg"
+                variant="outline"
+                className="w-full sm:w-auto text-lg border-primary/30 hover:bg-primary/10"
+                onClick={downloadProof}
+                disabled={downloadingProof}
+                data-testid="button-download-proof"
+              >
+                {downloadingProof ? (
+                  <Shield className="mr-2 w-5 h-5 animate-pulse" />
+                ) : (
+                  <Download className="mr-2 w-5 h-5" />
+                )}
+                {downloadingProof ? "Generating..." : "Proof of Compute"}
               </Button>
             )}
           </div>

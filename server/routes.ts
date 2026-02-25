@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
+import { createHmac } from "crypto";
 import { storage } from "./storage";
 import { api, ws as wsSchema } from "@shared/routes";
 import { z } from "zod";
@@ -37,6 +38,96 @@ export async function registerRoutes(
         });
       }
       throw err;
+    }
+  });
+
+  app.get("/api/nodes/:id/proof", async (req, res) => {
+    try {
+      const node = await storage.getNode(Number(req.params.id));
+      if (!node) {
+        return res.status(404).json({ message: "Node not found" });
+      }
+
+      const proofData = {
+        version: "1.0",
+        network: "NeuroCompute",
+        type: "proof-of-compute",
+        node: {
+          id: node.id,
+          name: node.name,
+          status: node.status,
+        },
+        compute: {
+          totalTokensGenerated: node.totalTokens,
+          pixelCreditsEarned: node.pixelCredits + node.pixelsPlaced,
+          pixelCreditsRemaining: node.pixelCredits,
+          pixelsPlaced: node.pixelsPlaced,
+          tokensPerPixelCredit: 100,
+        },
+        metadata: {
+          issuedAt: new Date().toISOString(),
+          lastSeen: node.lastSeen.toISOString(),
+          networkEndpoint: "https://neurocompute.replit.app",
+          cimcIntegration: "https://cimc.io",
+        },
+      };
+
+      const payload = JSON.stringify(proofData, null, 0);
+      const secret = process.env.SESSION_SECRET || "neurocompute-default";
+      const signature = createHmac("sha256", secret).update(payload).digest("hex");
+
+      const certificate = {
+        ...proofData,
+        proof: {
+          algorithm: "HMAC-SHA256",
+          signature,
+          verifyEndpoint: "/api/verify-proof",
+        },
+      };
+
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="neurocompute-proof-${node.name}-${Date.now()}.json"`
+      );
+      res.json(certificate);
+    } catch (err) {
+      console.error("Proof generation error:", err);
+      res.status(500).json({ message: "Failed to generate proof of compute" });
+    }
+  });
+
+  app.post("/api/verify-proof", async (req, res) => {
+    try {
+      const { proof, ...proofData } = req.body;
+      if (!proof?.signature) {
+        return res.status(400).json({ valid: false, message: "No signature provided" });
+      }
+
+      const payload = JSON.stringify(proofData, null, 0);
+      const secret = process.env.SESSION_SECRET || "neurocompute-default";
+      const expected = createHmac("sha256", secret).update(payload).digest("hex");
+
+      if (expected === proof.signature) {
+        const node = await storage.getNode(proofData.node?.id);
+        res.json({
+          valid: true,
+          message: "Proof of compute verified successfully",
+          currentState: node
+            ? {
+                totalTokens: node.totalTokens,
+                pixelCredits: node.pixelCredits,
+                pixelsPlaced: node.pixelsPlaced,
+                status: node.status,
+              }
+            : null,
+        });
+      } else {
+        res.json({ valid: false, message: "Invalid signature — proof has been tampered with" });
+      }
+    } catch (err) {
+      console.error("Proof verification error:", err);
+      res.status(500).json({ valid: false, message: "Verification failed" });
     }
   });
 
