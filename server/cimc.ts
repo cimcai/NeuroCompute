@@ -79,8 +79,12 @@ export async function postToOpenForum(speaker: string, content: string, roomId =
   return res.json();
 }
 
-export async function startBridge(): Promise<any> {
-  const res = await fetch(`${CIMC_BASE_URL}/api/bridge/start`, { method: "POST" });
+export async function startBridge(playerName = "NeuroCompute"): Promise<any> {
+  const res = await fetch(`${CIMC_BASE_URL}/api/bridge/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ playerName }),
+  });
   if (!res.ok) throw new Error(`CIMC bridge start failed: ${res.status}`);
   return res.json();
 }

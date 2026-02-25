@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { nodes, messages, type Node, type InsertNode, type Message, type InsertMessage } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { nodes, messages, bridgeGames, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame } from "@shared/schema";
+import { eq, desc, sql } from "drizzle-orm";
 
 export interface IStorage {
   getNodes(): Promise<Node[]>;
@@ -10,6 +10,11 @@ export interface IStorage {
   updateNodeStatus(id: number, status: string): Promise<Node>;
   getMessages(limit?: number): Promise<Message[]>;
   createMessage(msg: InsertMessage): Promise<Message>;
+  createBridgeGame(game: InsertBridgeGame): Promise<BridgeGame>;
+  updateBridgeGame(id: number, updates: Partial<BridgeGame>): Promise<BridgeGame>;
+  getBridgeGames(limit?: number): Promise<BridgeGame[]>;
+  getBridgeGameBySession(sessionId: string): Promise<BridgeGame | undefined>;
+  getBridgeStats(): Promise<{ modelId: string; gamesPlayed: number; gamesWon: number; totalCorrect: number; totalAnswered: number }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -57,6 +62,43 @@ export class DatabaseStorage implements IStorage {
   async createMessage(msg: InsertMessage): Promise<Message> {
     const [created] = await db.insert(messages).values(msg).returning();
     return created;
+  }
+
+  async createBridgeGame(game: InsertBridgeGame): Promise<BridgeGame> {
+    const [created] = await db.insert(bridgeGames).values(game).returning();
+    return created;
+  }
+
+  async updateBridgeGame(id: number, updates: Partial<BridgeGame>): Promise<BridgeGame> {
+    const [updated] = await db.update(bridgeGames)
+      .set(updates)
+      .where(eq(bridgeGames.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getBridgeGames(limit = 50): Promise<BridgeGame[]> {
+    return await db.select().from(bridgeGames).orderBy(desc(bridgeGames.createdAt)).limit(limit);
+  }
+
+  async getBridgeGameBySession(sessionId: string): Promise<BridgeGame | undefined> {
+    const [game] = await db.select().from(bridgeGames).where(eq(bridgeGames.sessionId, sessionId));
+    return game;
+  }
+
+  async getBridgeStats(): Promise<{ modelId: string; gamesPlayed: number; gamesWon: number; totalCorrect: number; totalAnswered: number }[]> {
+    const results = await db
+      .select({
+        modelId: bridgeGames.modelId,
+        gamesPlayed: sql<number>`count(*)::int`,
+        gamesWon: sql<number>`count(*) filter (where ${bridgeGames.won} = 'yes')::int`,
+        totalCorrect: sql<number>`sum(${bridgeGames.questionsCorrect})::int`,
+        totalAnswered: sql<number>`sum(${bridgeGames.questionsAnswered})::int`,
+      })
+      .from(bridgeGames)
+      .where(sql`${bridgeGames.won} != 'pending'`)
+      .groupBy(bridgeGames.modelId);
+    return results;
   }
 }
 

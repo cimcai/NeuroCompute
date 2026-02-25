@@ -162,6 +162,71 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/bridge/play", async (req, res) => {
+    try {
+      const { modelId } = req.body;
+      if (!modelId) {
+        return res.status(400).json({ message: "modelId is required" });
+      }
+      const playerName = `NeuroCompute-${modelId.split("-")[0]}`;
+      const session = await cimc.startBridge(playerName);
+
+      const game = await storage.createBridgeGame({
+        sessionId: session.sessionId,
+        playerName,
+        modelId,
+        questionsAnswered: 0,
+        questionsCorrect: 0,
+        won: "pending",
+        questions: [session.question],
+        answers: [],
+        results: [],
+      });
+
+      broadcastAll(JSON.stringify({
+        type: "bridgeQuestion",
+        payload: {
+          gameId: game.id,
+          sessionId: session.sessionId,
+          question: session.question,
+          questionNumber: session.questionNumber,
+          category: session.category,
+          modelId,
+        },
+      }));
+
+      broadcastAll(JSON.stringify({
+        type: "bridgeUpdate",
+        payload: { game },
+      }));
+
+      res.json({ game, session });
+    } catch (err) {
+      console.error("Bridge play error:", err);
+      res.status(500).json({ message: "Failed to start Bridge game" });
+    }
+  });
+
+  app.get("/api/bridge/games", async (req, res) => {
+    try {
+      const games = await storage.getBridgeGames(100);
+      res.json(games);
+    } catch (err) {
+      console.error("Bridge games error:", err);
+      res.status(500).json({ message: "Failed to fetch bridge games" });
+    }
+  });
+
+  app.get("/api/bridge/stats", async (req, res) => {
+    try {
+      const stats = await storage.getBridgeStats();
+      res.json(stats);
+    } catch (err) {
+      console.error("Bridge stats error:", err);
+      res.status(500).json({ message: "Failed to fetch bridge stats" });
+    }
+  });
+
   // WebSocket
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
   const clients = new Map<number, WebSocket>();
@@ -241,6 +306,68 @@ export async function registerRoutes(
             await cimc.postToOpenForum(parsed.senderName, parsed.content, 2);
           } catch (err) {
             console.error("CIMC submit error (chat):", err);
+          }
+        } else if (message.type === "bridgeAnswer") {
+          const parsed = wsSchema.send.bridgeAnswer.parse(message.payload);
+          const game = await storage.getBridgeGames(100).then(g => g.find(x => x.id === parsed.gameId));
+          if (game && game.won === "pending") {
+            try {
+              const result = await cimc.answerBridge(game.sessionId, parsed.answer);
+              const newQuestions = [...game.questions];
+              const newAnswers = [...game.answers, parsed.answer];
+              const newResults = [...game.results, result.correct ? "correct" : "wrong"];
+
+              if (result.nextQuestion) {
+                newQuestions.push(result.nextQuestion);
+              }
+
+              const updates: any = {
+                questionsAnswered: result.score.answered,
+                questionsCorrect: result.score.correct,
+                questions: newQuestions,
+                answers: newAnswers,
+                results: newResults,
+              };
+
+              if (result.gameOver) {
+                updates.won = result.won ? "yes" : "no";
+              }
+
+              const updated = await storage.updateBridgeGame(game.id, updates);
+
+              broadcastAll(JSON.stringify({
+                type: "bridgeResult",
+                payload: {
+                  gameId: game.id,
+                  correct: result.correct,
+                  message: result.message,
+                  gameOver: result.gameOver,
+                  won: result.won || false,
+                  score: result.score,
+                },
+              }));
+
+              broadcastAll(JSON.stringify({
+                type: "bridgeUpdate",
+                payload: { game: updated },
+              }));
+
+              if (!result.gameOver && result.nextQuestion) {
+                broadcastAll(JSON.stringify({
+                  type: "bridgeQuestion",
+                  payload: {
+                    gameId: game.id,
+                    sessionId: game.sessionId,
+                    question: result.nextQuestion,
+                    questionNumber: result.nextQuestionNumber || result.score.answered + 1,
+                    category: result.nextCategory || "general",
+                    modelId: game.modelId,
+                  },
+                }));
+              }
+            } catch (err) {
+              console.error("Bridge answer error:", err);
+            }
           }
         } else if (message.type === "chatResponse") {
           const parsed = wsSchema.send.chatResponse.parse(message.payload);

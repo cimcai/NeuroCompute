@@ -35,9 +35,20 @@ export function useComputeNode() {
   const isRunningRef = useRef(false);
   const tokensSinceLastTickRef = useRef(0);
   const chatQueueRef = useRef<string[]>([]);
+  const bridgeQueueRef = useRef<{ gameId: number; question: string; category: string }[]>([]);
+  const nodeIdRef = useRef<number | null>(null);
+  const nodeNameRef = useRef<string | null>(null);
 
   const createNode = useCreateNode();
   const ws = useWebSocket();
+
+  useEffect(() => {
+    nodeIdRef.current = nodeId;
+  }, [nodeId]);
+
+  useEffect(() => {
+    nodeNameRef.current = nodeName;
+  }, [nodeName]);
 
   useEffect(() => {
     if (status !== "computing") return;
@@ -67,6 +78,19 @@ export function useComputeNode() {
     return unsub;
   }, [ws]);
 
+  useEffect(() => {
+    const unsub = ws.subscribe("bridgeQuestion", (data: { gameId: number; question: string; category: string; modelId: string }) => {
+      if (isRunningRef.current && engineRef.current) {
+        bridgeQueueRef.current.push({
+          gameId: data.gameId,
+          question: data.question,
+          category: data.category,
+        });
+      }
+    });
+    return unsub;
+  }, [ws]);
+
   const stopCompute = useCallback(async () => {
     isRunningRef.current = false;
     setStatus("offline");
@@ -82,6 +106,42 @@ export function useComputeNode() {
 
     while (isRunningRef.current) {
       try {
+        const bridgeTask = bridgeQueueRef.current.shift();
+        if (bridgeTask) {
+          const systemPrompt = `You are answering trivia questions. Give ONLY the direct answer, nothing else. No explanations, no "I think", no extra text. Just the answer. For example: if asked "What is the capital of France?" just say "Paris".`;
+          const userPrompt = `Category: ${bridgeTask.category}. ${bridgeTask.question}`;
+
+          let fullAnswer = "";
+          const stream = await engineRef.current.chat.completions.create({
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            stream: true,
+            max_tokens: 30,
+            temperature: 0.1,
+          });
+
+          for await (const chunk of stream) {
+            if (!isRunningRef.current) break;
+            const content = chunk.choices[0]?.delta?.content || "";
+            fullAnswer += content;
+            setSessionTokens((prev) => prev + 1);
+            tokensSinceLastTickRef.current += 1;
+          }
+
+          const cleanAnswer = fullAnswer.trim().replace(/^["']|["']$/g, "").replace(/\.$/, "").trim();
+          if (cleanAnswer && nodeIdRef.current && nodeNameRef.current) {
+            ws.emit("bridgeAnswer", {
+              gameId: bridgeTask.gameId,
+              answer: cleanAnswer,
+              nodeId: nodeIdRef.current,
+              nodeName: nodeNameRef.current,
+            });
+          }
+          continue;
+        }
+
         const chatPrompt = chatQueueRef.current.shift();
         const prompt = chatPrompt || getRandomPrompt();
         const isChat = !!chatPrompt;
@@ -101,11 +161,11 @@ export function useComputeNode() {
           tokensSinceLastTickRef.current += 1;
         }
 
-        if (isChat && fullResponse && nodeId && nodeName) {
+        if (isChat && fullResponse && nodeIdRef.current && nodeNameRef.current) {
           ws.emit("chatResponse", {
             content: fullResponse,
-            nodeId: nodeId,
-            nodeName: nodeName,
+            nodeId: nodeIdRef.current,
+            nodeName: nodeNameRef.current,
           });
         }
       } catch (err) {
@@ -115,7 +175,7 @@ export function useComputeNode() {
         }
       }
     }
-  }, [ws, nodeId, nodeName]);
+  }, [ws]);
 
   const startCompute = useCallback(async () => {
     try {

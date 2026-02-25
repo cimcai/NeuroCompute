@@ -3,6 +3,7 @@ import { StatCard } from "@/components/StatCard";
 import { Leaderboard } from "@/components/Leaderboard";
 import { Chat } from "@/components/Chat";
 import { CimcFeed } from "@/components/CimcFeed";
+import { BridgeGame } from "@/components/BridgeGame";
 import { ModelSelector } from "@/components/ModelSelector";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -164,7 +165,7 @@ export default function Dashboard() {
               <CimcFeed roomId={2} roomLabel="Open Forum" />
             </TabsContent>
             <TabsContent value="room3" className="mt-4">
-              <CimcFeed roomId={3} roomLabel="Bridge of Death" />
+              <BridgeGame />
             </TabsContent>
             <TabsContent value="room1" className="mt-4">
               <CimcFeed roomId={1} roomLabel="Main Conference Room" />

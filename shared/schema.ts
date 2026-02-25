@@ -29,3 +29,22 @@ export const insertMessageSchema = createInsertSchema(messages).omit({ id: true,
 
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
+
+export const bridgeGames = pgTable("bridge_games", {
+  id: serial("id").primaryKey(),
+  sessionId: text("session_id").notNull(),
+  playerName: text("player_name").notNull(),
+  modelId: text("model_id").notNull(),
+  questionsAnswered: integer("questions_answered").default(0).notNull(),
+  questionsCorrect: integer("questions_correct").default(0).notNull(),
+  won: text("won").default("pending").notNull(),
+  questions: text("questions").array().default([]).notNull(),
+  answers: text("answers").array().default([]).notNull(),
+  results: text("results").array().default([]).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertBridgeGameSchema = createInsertSchema(bridgeGames).omit({ id: true, createdAt: true });
+
+export type BridgeGame = typeof bridgeGames.$inferSelect;
+export type InsertBridgeGame = z.infer<typeof insertBridgeGameSchema>;
