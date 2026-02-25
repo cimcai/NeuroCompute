@@ -6,19 +6,19 @@ import { DEFAULT_MODEL_ID } from "@/lib/models";
 
 export type ComputeStatus = "offline" | "loading" | "computing" | "error";
 
-const RANDOM_PROMPTS = [
-  "Write a haiku about artificial intelligence.",
-  "Explain quantum mechanics in one sentence.",
-  "What is the meaning of life?",
-  "List 3 random facts about space.",
-  "Write a short poem about a decentralized network.",
-  "What are the benefits of edge computing?",
-  "Tell me a quick joke.",
-  "Summarize the history of the internet in 20 words.",
+const IDLE_PROMPTS = [
+  "What does decentralized AI inference mean for the future of computing?",
+  "How does browser-based AI compare to cloud-based AI in terms of privacy?",
+  "Write a brief thought about collective intelligence networks.",
+  "What philosophical implications does distributed consciousness have?",
+  "How might peer-to-peer AI change the relationship between users and technology?",
+  "Describe the concept of emergent intelligence from networked compute nodes.",
+  "What role does trust play in decentralized systems?",
+  "How does the Wired connect all forms of consciousness?",
 ];
 
-function getRandomPrompt() {
-  return RANDOM_PROMPTS[Math.floor(Math.random() * RANDOM_PROMPTS.length)];
+function getIdlePrompt() {
+  return IDLE_PROMPTS[Math.floor(Math.random() * IDLE_PROMPTS.length)];
 }
 
 export function useComputeNode() {
@@ -143,7 +143,7 @@ export function useComputeNode() {
         }
 
         const chatPrompt = chatQueueRef.current.shift();
-        const prompt = chatPrompt || getRandomPrompt();
+        const prompt = chatPrompt || getIdlePrompt();
         const isChat = !!chatPrompt;
 
         let fullResponse = "";

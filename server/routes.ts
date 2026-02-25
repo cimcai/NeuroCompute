@@ -5,6 +5,7 @@ import { storage } from "./storage";
 import { api, ws as wsSchema } from "@shared/routes";
 import { z } from "zod";
 import * as cimc from "./cimc";
+import { startOrchestrator } from "./agent-orchestrator";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -467,6 +468,8 @@ export async function registerRoutes(
       }
     });
   });
+
+  startOrchestrator({ broadcastAll });
 
   return httpServer;
 }

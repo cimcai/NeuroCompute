@@ -70,11 +70,19 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
 - `chatPending` - Broadcast to compute nodes to pick up
 - `chatResponse` - Compute node sends AI response back
 
+## Agent Orchestrator
+Server-side autonomous agent system (`server/agent-orchestrator.ts`) that directs active compute nodes:
+- **Chat Agent** (every 90s): Monitors CIMC Room 2 for new non-NeuroCompute messages, broadcasts them to active nodes as prompts
+- **Bridge Agent** (every 120s): Auto-starts Bridge of Death games for active nodes, feeds questions through WebSocket
+- **Pixel Agent** (every 60s): Auto-places pixels on cimc.io canvas for any node with earned credits, prefers empty spots
+- All agents only activate when compute nodes are in "computing" status (browser with WebLLM running)
+
 ## Key Files
 - `shared/schema.ts` - Drizzle tables and types
 - `shared/routes.ts` - API contracts and WS event schemas
 - `server/routes.ts` - Express routes + WebSocket server
 - `server/cimc.ts` - CIMC API client (all cimc.io endpoints)
+- `server/agent-orchestrator.ts` - Autonomous agent system (chat, bridge, pixel agents)
 - `client/src/hooks/use-compute-node.ts` - WebLLM integration and compute loop (supports model selection)
 - `client/src/lib/models.ts` - 15 curated WebLLM model definitions
 - `client/src/components/ModelSelector.tsx` - Model picker UI
