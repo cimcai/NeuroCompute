@@ -166,9 +166,9 @@ export async function registerRoutes(
               payload: { content: parsed.content },
             })
           );
-          // Also submit to CIMC
+          // Submit to CIMC room 2 (NeuroCompute room)
           try {
-            await cimc.submitResponse(parsed.senderName, parsed.content);
+            await cimc.submitResponse(parsed.senderName, parsed.content, 2);
           } catch (err) {
             console.error("CIMC submit error (chat):", err);
           }
@@ -186,9 +186,9 @@ export async function registerRoutes(
               payload: { id: saved.id, content: saved.content, senderName: saved.nodeName, role: "assistant" },
             })
           );
-          // Also submit AI response to CIMC
+          // Submit AI response to CIMC room 2 (NeuroCompute room)
           try {
-            await cimc.submitResponse(`NeuroCompute:${parsed.nodeName}`, parsed.content);
+            await cimc.submitResponse(`NeuroCompute:${parsed.nodeName}`, parsed.content, 2);
           } catch (err) {
             console.error("CIMC submit error (response):", err);
           }

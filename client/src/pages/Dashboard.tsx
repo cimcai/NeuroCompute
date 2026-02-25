@@ -6,6 +6,7 @@ import { CimcFeed } from "@/components/CimcFeed";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -73,7 +74,7 @@ export default function Dashboard() {
               {node.nodeName || "Node Unregistered"}
             </h2>
             <p className="text-muted-foreground max-w-md mx-auto text-sm">
-              Contribute compute power. Runs locally in your browser via WebGPU. Chat and AI responses feed into the CIMC Spirits network.
+              Contribute compute power. Runs locally in your browser via WebGPU. Chat and AI responses feed into CIMC Room 2.
             </p>
           </div>
 
@@ -133,13 +134,29 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Main content grid: Chat + CIMC | Leaderboard */}
+      {/* Main content grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
           <div className="h-[450px]">
             <Chat />
           </div>
-          <CimcFeed />
+
+          <Tabs defaultValue="room2" className="w-full">
+            <TabsList className="w-full" data-testid="tabs-cimc-rooms">
+              <TabsTrigger value="room2" className="flex-1" data-testid="tab-room-2">
+                NeuroCompute (Room 2)
+              </TabsTrigger>
+              <TabsTrigger value="room1" className="flex-1" data-testid="tab-room-1">
+                Hackathon (Room 1)
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="room2" className="mt-4">
+              <CimcFeed roomId={2} roomLabel="NeuroCompute Room" />
+            </TabsContent>
+            <TabsContent value="room1" className="mt-4">
+              <CimcFeed roomId={1} roomLabel="Hackathon Room" />
+            </TabsContent>
+          </Tabs>
         </div>
 
         <div>

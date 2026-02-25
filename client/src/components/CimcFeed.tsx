@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
-import { Globe, Sparkles, MessageCircle } from "lucide-react";
+import { Globe, Sparkles, MessageCircle, Send } from "lucide-react";
 
 interface CimcEntry {
   id: number;
@@ -20,17 +21,24 @@ interface CimcPhilosopher {
   proposedResponse?: string;
 }
 
-export function CimcFeed() {
+interface CimcFeedProps {
+  roomId: number;
+  roomLabel: string;
+}
+
+export function CimcFeed({ roomId, roomLabel }: CimcFeedProps) {
   const [entries, setEntries] = useState<CimcEntry[]>([]);
   const [philosophers, setPhilosophers] = useState<CimcPhilosopher[]>([]);
   const [loading, setLoading] = useState(true);
+  const [input, setInput] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const fetchData = async () => {
     try {
       const [convRes, philRes] = await Promise.all([
-        fetch("/api/cimc/conversation?limit=30"),
-        fetch("/api/cimc/philosophers"),
+        fetch(`/api/cimc/conversation?roomId=${roomId}&limit=40`),
+        fetch(`/api/cimc/philosophers?roomId=${roomId}`),
       ]);
       if (convRes.ok) {
         const convData = await convRes.json();
@@ -48,16 +56,40 @@ export function CimcFeed() {
   };
 
   useEffect(() => {
+    setLoading(true);
     fetchData();
-    const interval = setInterval(fetchData, 8000);
+    const interval = setInterval(fetchData, 6000);
     return () => clearInterval(interval);
-  }, []);
+  }, [roomId]);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [entries]);
+
+  const handleSubmit = async () => {
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    setSubmitting(true);
+    try {
+      await fetch("/api/cimc/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          speaker: "NeuroCompute User",
+          content: trimmed,
+          roomId,
+        }),
+      });
+      setInput("");
+      setTimeout(fetchData, 1000);
+    } catch (err) {
+      console.error("CIMC submit error:", err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const activePhilosophers = philosophers
     .filter((p) => p.confidence > 0)
@@ -104,7 +136,7 @@ export function CimcFeed() {
           <div className="flex items-center justify-between gap-4">
             <CardTitle className="flex items-center gap-2 text-lg" data-testid="text-cimc-title">
               <Globe className="w-5 h-5 text-primary" />
-              CIMC Live Feed
+              {roomLabel}
             </CardTitle>
             <a
               href="https://cimc.io"
@@ -117,21 +149,21 @@ export function CimcFeed() {
             </a>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Live conversation stream from the CIMC Spirits network
+            Room {roomId} — Live conversation stream from the CIMC Spirits network
           </p>
         </CardHeader>
-        <CardContent className="flex-1 overflow-hidden p-0 min-h-0">
+        <CardContent className="flex-1 flex flex-col p-0 min-h-0">
           {loading ? (
-            <div className="flex justify-center items-center h-full">
+            <div className="flex justify-center items-center flex-1">
               <Globe className="w-8 h-8 text-muted-foreground animate-pulse" />
             </div>
           ) : entries.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+            <div className="flex flex-col items-center justify-center flex-1 text-muted-foreground">
               <MessageCircle className="w-12 h-12 mb-2 opacity-20" />
-              <p className="text-sm">No conversation entries yet</p>
+              <p className="text-sm">No conversation entries yet in this room</p>
             </div>
           ) : (
-            <div ref={scrollRef} className="overflow-y-auto h-full p-4 space-y-3">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
               <AnimatePresence>
                 {entries.map((entry) => (
                   <motion.div
@@ -147,7 +179,7 @@ export function CimcFeed() {
                         {new Date(entry.timestamp).toLocaleTimeString()}
                       </span>
                     </div>
-                    <p className="text-sm text-foreground/90 pl-0 leading-relaxed">
+                    <p className="text-sm text-foreground/90 leading-relaxed">
                       {entry.content}
                     </p>
                   </motion.div>
@@ -155,6 +187,36 @@ export function CimcFeed() {
               </AnimatePresence>
             </div>
           )}
+
+          <div className="p-4 border-t border-white/5">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSubmit();
+              }}
+              className="flex gap-2"
+            >
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Submit to CIMC (moderated)..."
+                className="flex-1 bg-secondary/50 border border-white/10 rounded-lg px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                data-testid={`input-cimc-room-${roomId}`}
+              />
+              <Button
+                type="submit"
+                size="icon"
+                disabled={!input.trim() || submitting}
+                data-testid={`button-cimc-submit-${roomId}`}
+              >
+                <Send className="w-4 h-4" />
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground mt-1">
+              Submissions go through admin moderation before appearing
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>
