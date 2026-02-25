@@ -92,6 +92,76 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/cimc/open-forum", async (req, res) => {
+    try {
+      const { speaker, content, roomId } = req.body;
+      if (!speaker || !content) {
+        return res.status(400).json({ message: "speaker and content are required" });
+      }
+      const data = await cimc.postToOpenForum(speaker, content, roomId || 2);
+      res.json(data);
+    } catch (err) {
+      console.error("CIMC open forum error:", err);
+      res.status(502).json({ message: "Failed to post to CIMC open forum" });
+    }
+  });
+
+  app.get("/api/cimc/rooms", async (req, res) => {
+    try {
+      const data = await cimc.getRooms();
+      res.json(data);
+    } catch (err) {
+      console.error("CIMC rooms error:", err);
+      res.status(502).json({ message: "Failed to fetch CIMC rooms" });
+    }
+  });
+
+  app.get("/api/cimc/room-entries", async (req, res) => {
+    try {
+      const roomId = Number(req.query.roomId) || 2;
+      const limit = Number(req.query.limit) || 30;
+      const data = await cimc.getRoomEntries(roomId, limit);
+      res.json(data);
+    } catch (err) {
+      console.error("CIMC room entries error:", err);
+      res.status(502).json({ message: "Failed to fetch CIMC room entries" });
+    }
+  });
+
+  app.post("/api/cimc/bridge/start", async (req, res) => {
+    try {
+      const data = await cimc.startBridge();
+      res.json(data);
+    } catch (err) {
+      console.error("CIMC bridge start error:", err);
+      res.status(502).json({ message: "Failed to start Bridge of Death" });
+    }
+  });
+
+  app.post("/api/cimc/bridge/answer", async (req, res) => {
+    try {
+      const { sessionId, answer } = req.body;
+      if (!sessionId || !answer) {
+        return res.status(400).json({ message: "sessionId and answer are required" });
+      }
+      const data = await cimc.answerBridge(sessionId, answer);
+      res.json(data);
+    } catch (err) {
+      console.error("CIMC bridge answer error:", err);
+      res.status(502).json({ message: "Failed to answer Bridge of Death" });
+    }
+  });
+
+  app.get("/api/cimc/bridge/leaderboard", async (req, res) => {
+    try {
+      const data = await cimc.getBridgeLeaderboard();
+      res.json(data);
+    } catch (err) {
+      console.error("CIMC bridge leaderboard error:", err);
+      res.status(502).json({ message: "Failed to fetch Bridge leaderboard" });
+    }
+  });
+
   // WebSocket
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
   const clients = new Map<number, WebSocket>();
@@ -166,9 +236,9 @@ export async function registerRoutes(
               payload: { content: parsed.content },
             })
           );
-          // Submit to CIMC room 2 (NeuroCompute room)
+          // Submit to CIMC Open Forum (Room 2, no moderation)
           try {
-            await cimc.submitResponse(parsed.senderName, parsed.content, 2);
+            await cimc.postToOpenForum(parsed.senderName, parsed.content, 2);
           } catch (err) {
             console.error("CIMC submit error (chat):", err);
           }
@@ -186,9 +256,9 @@ export async function registerRoutes(
               payload: { id: saved.id, content: saved.content, senderName: saved.nodeName, role: "assistant" },
             })
           );
-          // Submit AI response to CIMC room 2 (NeuroCompute room)
+          // Submit AI response to CIMC Open Forum (Room 2, no moderation)
           try {
-            await cimc.submitResponse(`NeuroCompute:${parsed.nodeName}`, parsed.content, 2);
+            await cimc.postToOpenForum(`NeuroCompute:${parsed.nodeName}`, parsed.content, 2);
           } catch (err) {
             console.error("CIMC submit error (response):", err);
           }

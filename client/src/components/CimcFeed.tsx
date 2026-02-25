@@ -34,15 +34,23 @@ export function CimcFeed({ roomId, roomLabel }: CimcFeedProps) {
   const [submitting, setSubmitting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const isOpenForum = roomId === 2;
+
   const fetchData = async () => {
     try {
-      const [convRes, philRes] = await Promise.all([
-        fetch(`/api/cimc/conversation?roomId=${roomId}&limit=40`),
+      const fetches: Promise<Response>[] = [
+        fetch(`/api/cimc/room-entries?roomId=${roomId}&limit=40`),
         fetch(`/api/cimc/philosophers?roomId=${roomId}`),
-      ]);
+      ];
+      if (!isOpenForum) {
+        fetches[0] = fetch(`/api/cimc/conversation?roomId=${roomId}&limit=40`);
+      }
+
+      const [convRes, philRes] = await Promise.all(fetches);
       if (convRes.ok) {
         const convData = await convRes.json();
-        setEntries(convData.entries || []);
+        const entryList = isOpenForum ? convData : (convData.entries || []);
+        setEntries(Array.isArray(entryList) ? entryList : []);
       }
       if (philRes.ok) {
         const philData = await philRes.json();
@@ -73,7 +81,8 @@ export function CimcFeed({ roomId, roomLabel }: CimcFeedProps) {
     if (!trimmed) return;
     setSubmitting(true);
     try {
-      await fetch("/api/cimc/submit", {
+      const endpoint = isOpenForum ? "/api/cimc/open-forum" : "/api/cimc/submit";
+      await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -149,7 +158,7 @@ export function CimcFeed({ roomId, roomLabel }: CimcFeedProps) {
             </a>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Room {roomId} — Live conversation stream from the CIMC Spirits network
+            Room {roomId} — {isOpenForum ? "Open Forum — posts go live instantly, philosophers analyze all messages" : "Live conversation stream from the CIMC Spirits network"}
           </p>
         </CardHeader>
         <CardContent className="flex-1 flex flex-col p-0 min-h-0">
@@ -200,7 +209,7 @@ export function CimcFeed({ roomId, roomLabel }: CimcFeedProps) {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Submit to CIMC (moderated)..."
+                placeholder={isOpenForum ? "Post to Open Forum (goes live instantly)..." : "Submit to CIMC (moderated)..."}
                 className="flex-1 bg-secondary/50 border border-white/10 rounded-lg px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 data-testid={`input-cimc-room-${roomId}`}
               />
@@ -214,7 +223,9 @@ export function CimcFeed({ roomId, roomLabel }: CimcFeedProps) {
               </Button>
             </form>
             <p className="text-xs text-muted-foreground mt-1">
-              Submissions go through admin moderation before appearing
+              {isOpenForum
+                ? "Posts go live immediately — 10 philosopher spirits will analyze your message"
+                : "Submissions go through admin moderation before appearing"}
             </p>
           </div>
         </CardContent>

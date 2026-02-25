@@ -3,6 +3,7 @@ import { StatCard } from "@/components/StatCard";
 import { Leaderboard } from "@/components/Leaderboard";
 import { Chat } from "@/components/Chat";
 import { CimcFeed } from "@/components/CimcFeed";
+import { ModelSelector } from "@/components/ModelSelector";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
@@ -74,7 +75,7 @@ export default function Dashboard() {
               {node.nodeName || "Node Unregistered"}
             </h2>
             <p className="text-muted-foreground max-w-md mx-auto text-sm">
-              Contribute compute power. Runs locally in your browser via WebGPU. Chat and AI responses feed into CIMC Room 2.
+              Contribute compute power. Runs locally in your browser via WebGPU. Chat and AI responses feed into CIMC.
             </p>
           </div>
 
@@ -116,8 +117,14 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Model Selector + Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <ModelSelector
+          selectedModel={node.selectedModel}
+          onSelectModel={node.setSelectedModel}
+          activeModel={node.activeModel}
+          disabled={node.status === "loading" || node.status === "computing"}
+        />
         <StatCard
           title="Live Speed"
           value={node.tokensPerSecond}
@@ -144,17 +151,23 @@ export default function Dashboard() {
           <Tabs defaultValue="room2" className="w-full">
             <TabsList className="w-full" data-testid="tabs-cimc-rooms">
               <TabsTrigger value="room2" className="flex-1" data-testid="tab-room-2">
-                NeuroCompute (Room 2)
+                Open Forum
+              </TabsTrigger>
+              <TabsTrigger value="room3" className="flex-1" data-testid="tab-room-3">
+                Bridge of Death
               </TabsTrigger>
               <TabsTrigger value="room1" className="flex-1" data-testid="tab-room-1">
-                Hackathon (Room 1)
+                Main Conference
               </TabsTrigger>
             </TabsList>
             <TabsContent value="room2" className="mt-4">
-              <CimcFeed roomId={2} roomLabel="NeuroCompute Room" />
+              <CimcFeed roomId={2} roomLabel="Open Forum" />
+            </TabsContent>
+            <TabsContent value="room3" className="mt-4">
+              <CimcFeed roomId={3} roomLabel="Bridge of Death" />
             </TabsContent>
             <TabsContent value="room1" className="mt-4">
-              <CimcFeed roomId={1} roomLabel="Hackathon Room" />
+              <CimcFeed roomId={1} roomLabel="Main Conference Room" />
             </TabsContent>
           </Tabs>
         </div>
