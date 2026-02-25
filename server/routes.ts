@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { api, ws as wsSchema } from "@shared/routes";
 import { z } from "zod";
+import * as cimc from "./cimc";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -43,9 +44,57 @@ export async function registerRoutes(
     res.json(msgs);
   });
 
+  // CIMC proxy endpoints
+  app.get("/api/cimc/conversation", async (req, res) => {
+    try {
+      const roomId = Number(req.query.roomId) || 1;
+      const limit = Number(req.query.limit) || 30;
+      const data = await cimc.getConversation(roomId, limit);
+      res.json(data);
+    } catch (err) {
+      console.error("CIMC conversation error:", err);
+      res.status(502).json({ message: "Failed to fetch CIMC conversation" });
+    }
+  });
+
+  app.get("/api/cimc/philosophers", async (req, res) => {
+    try {
+      const roomId = Number(req.query.roomId) || 1;
+      const data = await cimc.getPhilosophers(roomId);
+      res.json(data);
+    } catch (err) {
+      console.error("CIMC philosophers error:", err);
+      res.status(502).json({ message: "Failed to fetch CIMC philosophers" });
+    }
+  });
+
+  app.get("/api/cimc/spirits", async (req, res) => {
+    try {
+      const data = await cimc.getSpirits();
+      res.json(data);
+    } catch (err) {
+      console.error("CIMC spirits error:", err);
+      res.status(502).json({ message: "Failed to fetch CIMC spirits" });
+    }
+  });
+
+  app.post("/api/cimc/submit", async (req, res) => {
+    try {
+      const { speaker, content, roomId } = req.body;
+      if (!speaker || !content) {
+        return res.status(400).json({ message: "speaker and content are required" });
+      }
+      const data = await cimc.submitResponse(speaker, content, roomId || 1);
+      res.json(data);
+    } catch (err) {
+      console.error("CIMC submit error:", err);
+      res.status(502).json({ message: "Failed to submit to CIMC" });
+    }
+  });
+
+  // WebSocket
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
   const clients = new Map<number, WebSocket>();
-  const pendingChats: Array<{ content: string; senderName: string; resolve: (response: string) => void }> = [];
 
   function broadcast(msg: string, exclude?: WebSocket) {
     wss.clients.forEach((c) => {
@@ -111,13 +160,18 @@ export async function registerRoutes(
               payload: { id: saved.id, content: saved.content, senderName: saved.senderName, role: "user" },
             })
           );
-          // Queue for any compute node to pick up
           broadcastAll(
             JSON.stringify({
               type: "chatPending",
               payload: { content: parsed.content },
             })
           );
+          // Also submit to CIMC
+          try {
+            await cimc.submitResponse(parsed.senderName, parsed.content);
+          } catch (err) {
+            console.error("CIMC submit error (chat):", err);
+          }
         } else if (message.type === "chatResponse") {
           const parsed = wsSchema.send.chatResponse.parse(message.payload);
           const saved = await storage.createMessage({
@@ -132,6 +186,12 @@ export async function registerRoutes(
               payload: { id: saved.id, content: saved.content, senderName: saved.nodeName, role: "assistant" },
             })
           );
+          // Also submit AI response to CIMC
+          try {
+            await cimc.submitResponse(`NeuroCompute:${parsed.nodeName}`, parsed.content);
+          } catch (err) {
+            console.error("CIMC submit error (response):", err);
+          }
         }
       } catch (err) {
         console.error("WS error:", err);
