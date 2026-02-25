@@ -2,10 +2,9 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { CreateMLCEngine, MLCEngine } from "@mlc-ai/web-llm";
 import { useCreateNode } from "./use-nodes";
 import { useWebSocket } from "./use-websocket";
+import { DEFAULT_MODEL_ID } from "@/lib/models";
 
 export type ComputeStatus = "offline" | "loading" | "computing" | "error";
-
-const MODEL_ID = "TinyLlama-1.1B-Chat-v1.0-q4f16_1-MLC";
 
 const RANDOM_PROMPTS = [
   "Write a haiku about artificial intelligence.",
@@ -29,6 +28,8 @@ export function useComputeNode() {
   const [tokensPerSecond, setTokensPerSecond] = useState(0);
   const [nodeId, setNodeId] = useState<number | null>(null);
   const [nodeName, setNodeName] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL_ID);
+  const [activeModel, setActiveModel] = useState<string | null>(null);
 
   const engineRef = useRef<MLCEngine | null>(null);
   const isRunningRef = useRef(false);
@@ -139,12 +140,16 @@ export function useComputeNode() {
         }
       }
 
-      if (!engineRef.current) {
-        engineRef.current = await CreateMLCEngine(MODEL_ID, {
+      if (!engineRef.current || activeModel !== selectedModel) {
+        if (engineRef.current) {
+          engineRef.current = null;
+        }
+        engineRef.current = await CreateMLCEngine(selectedModel, {
           initProgressCallback: (progress) => {
             setProgressText(progress.text);
           },
         });
+        setActiveModel(selectedModel);
       }
 
       runGenerationLoop();
@@ -153,7 +158,7 @@ export function useComputeNode() {
       setStatus("error");
       setProgressText(`Error: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  }, [nodeId, nodeName, createNode, ws, runGenerationLoop]);
+  }, [nodeId, nodeName, createNode, ws, runGenerationLoop, selectedModel, activeModel]);
 
   return {
     status,
@@ -162,6 +167,9 @@ export function useComputeNode() {
     tokensPerSecond,
     nodeId,
     nodeName,
+    selectedModel,
+    setSelectedModel,
+    activeModel,
     startCompute,
     stopCompute,
     wsConnected: ws.connected,
