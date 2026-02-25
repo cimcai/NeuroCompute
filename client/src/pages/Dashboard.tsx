@@ -4,12 +4,13 @@ import { Leaderboard } from "@/components/Leaderboard";
 import { Chat } from "@/components/Chat";
 import { CimcFeed } from "@/components/CimcFeed";
 import { BridgeGame } from "@/components/BridgeGame";
+import { PixelCanvas } from "@/components/PixelCanvas";
 import { ModelSelector } from "@/components/ModelSelector";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal } from "lucide-react";
+import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Paintbrush } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function Dashboard() {
@@ -157,6 +158,10 @@ export default function Dashboard() {
               <TabsTrigger value="room3" className="flex-1" data-testid="tab-room-3">
                 Bridge of Death
               </TabsTrigger>
+              <TabsTrigger value="room4" className="flex-1" data-testid="tab-room-4">
+                <Paintbrush className="w-3 h-3 mr-1" />
+                Canvas
+              </TabsTrigger>
               <TabsTrigger value="room1" className="flex-1" data-testid="tab-room-1">
                 Main Conference
               </TabsTrigger>
@@ -166,6 +171,9 @@ export default function Dashboard() {
             </TabsContent>
             <TabsContent value="room3" className="mt-4">
               <BridgeGame />
+            </TabsContent>
+            <TabsContent value="room4" className="mt-4">
+              <PixelCanvas nodeId={node.nodeId} />
             </TabsContent>
             <TabsContent value="room1" className="mt-4">
               <CimcFeed roomId={1} roomLabel="Main Conference Room" />

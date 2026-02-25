@@ -116,3 +116,59 @@ export async function getSpirits(): Promise<any[]> {
   if (!res.ok) throw new Error(`CIMC models fetch failed: ${res.status}`);
   return res.json();
 }
+
+export interface CanvasPixel {
+  x: number;
+  y: number;
+  color: string;
+  agent: string;
+  placedAt?: string;
+}
+
+export async function getCanvas(): Promise<any> {
+  const res = await fetch(`${CIMC_BASE_URL}/api/canvas`);
+  if (!res.ok) throw new Error(`CIMC canvas fetch failed: ${res.status}`);
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+export async function placePixel(x: number, y: number, color: string, agent: string): Promise<any> {
+  const res = await fetch(`${CIMC_BASE_URL}/api/canvas/place`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ x, y, color, agent }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    try {
+      const err = JSON.parse(text);
+      throw new Error(err.error || err.message || `CIMC canvas place failed: ${res.status}`);
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("CIMC")) throw e;
+      throw new Error(`CIMC canvas place failed: ${res.status}`);
+    }
+  }
+  return res.json();
+}
+
+export async function getPixel(x: number, y: number): Promise<any> {
+  const res = await fetch(`${CIMC_BASE_URL}/api/canvas/pixel?x=${x}&y=${y}`);
+  if (!res.ok) throw new Error(`CIMC canvas pixel fetch failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getCanvasHistory(): Promise<any[]> {
+  const res = await fetch(`${CIMC_BASE_URL}/api/canvas/history`);
+  if (!res.ok) throw new Error(`CIMC canvas history fetch failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getCanvasStats(): Promise<any> {
+  const res = await fetch(`${CIMC_BASE_URL}/api/canvas/stats`);
+  if (!res.ok) throw new Error(`CIMC canvas stats fetch failed: ${res.status}`);
+  return res.json();
+}

@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { nodes, messages, bridgeGames, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame } from "@shared/schema";
+import { nodes, messages, bridgeGames, TOKENS_PER_PIXEL, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 
 export interface IStorage {
@@ -8,6 +8,7 @@ export interface IStorage {
   createNode(node: InsertNode): Promise<Node>;
   updateNodeTokens(id: number, addedTokens: number): Promise<Node>;
   updateNodeStatus(id: number, status: string): Promise<Node>;
+  spendPixelCredit(nodeId: number): Promise<Node>;
   getMessages(limit?: number): Promise<Message[]>;
   createMessage(msg: InsertMessage): Promise<Message>;
   createBridgeGame(game: InsertBridgeGame): Promise<BridgeGame>;
@@ -39,9 +40,31 @@ export class DatabaseStorage implements IStorage {
   async updateNodeTokens(id: number, addedTokens: number): Promise<Node> {
     const [node] = await db.select().from(nodes).where(eq(nodes.id, id));
     if (!node) throw new Error("Node not found");
+    const newTotalTokens = node.totalTokens + addedTokens;
+    const oldCreditsFromTokens = Math.floor(node.totalTokens / TOKENS_PER_PIXEL);
+    const newCreditsFromTokens = Math.floor(newTotalTokens / TOKENS_PER_PIXEL);
+    const earnedCredits = newCreditsFromTokens - oldCreditsFromTokens;
     const [updated] = await db.update(nodes)
-      .set({ totalTokens: node.totalTokens + addedTokens, lastSeen: new Date() })
+      .set({
+        totalTokens: newTotalTokens,
+        pixelCredits: node.pixelCredits + earnedCredits,
+        lastSeen: new Date(),
+      })
       .where(eq(nodes.id, id))
+      .returning();
+    return updated;
+  }
+
+  async spendPixelCredit(nodeId: number): Promise<Node> {
+    const [node] = await db.select().from(nodes).where(eq(nodes.id, nodeId));
+    if (!node) throw new Error("Node not found");
+    if (node.pixelCredits < 1) throw new Error("Not enough pixel credits");
+    const [updated] = await db.update(nodes)
+      .set({
+        pixelCredits: node.pixelCredits - 1,
+        pixelsPlaced: node.pixelsPlaced + 1,
+      })
+      .where(eq(nodes.id, nodeId))
       .returning();
     return updated;
   }

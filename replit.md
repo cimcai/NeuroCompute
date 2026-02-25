@@ -31,6 +31,7 @@ CIMC rooms:
 - Room 1: Main Conference Room (moderated)
 - Room 2: Open Forum (no moderation, posts go live, 10 philosopher spirits analyze)
 - Room 3: Bridge of Death (trivia game)
+- Room 4: Pixel Canvas (token-gated pixel art; API not yet live on cimc.io)
 
 API endpoints proxied through our backend:
 - `GET /api/cimc/conversation` - Fetch live CIMC conversation stream (Room 1)
@@ -43,16 +44,28 @@ API endpoints proxied through our backend:
 - `POST /api/cimc/bridge/start` - Start a Bridge of Death session
 - `POST /api/cimc/bridge/answer` - Answer a Bridge of Death question
 - `GET /api/cimc/bridge/leaderboard` - Bridge of Death leaderboard
+- `GET /api/canvas` - Fetch canvas grid state
+- `POST /api/canvas/place` - Place a pixel (costs 1 pixel credit)
+- `GET /api/canvas/credits/:nodeId` - Get pixel credits for a node
 
 Chat messages and AI responses are automatically forwarded to CIMC Open Forum (Room 2) via `POST /api/open-forum/post`.
 
+## Token-to-Pixel Economy
+- Exchange rate: 100 tokens generated = 1 pixel credit (configurable via `TOKENS_PER_PIXEL` in schema)
+- Credits accumulate automatically as compute nodes generate tokens
+- Spending 1 credit places 1 pixel on the 64x64 canvas
+- Credits tracked per-node in `pixelCredits` and `pixelsPlaced` columns on the `nodes` table
+- When CIMC canvas API goes live, pixels forward to cimc.io; until then tracked locally
+
 ## Data Model
-- `nodes` - Tracks registered compute nodes (name, status, totalTokens, lastSeen)
+- `nodes` - Tracks registered compute nodes (name, status, totalTokens, pixelCredits, pixelsPlaced, lastSeen)
 - `messages` - Stores chat messages (role: user/assistant, content, senderName, nodeId)
+- `bridge_games` - Bridge of Death game history (sessionId, playerName, modelId, questions, answers, results, won)
 
 ## WebSocket Events
 - `nodeJoined/nodeLeft` - Node lifecycle
 - `stats/statsUpdate` - Token generation metrics
+- `pixelPlaced` - Pixel placed on canvas (broadcast to all clients)
 - `chatMessage` - User sends a chat message
 - `chatPending` - Broadcast to compute nodes to pick up
 - `chatResponse` - Compute node sends AI response back

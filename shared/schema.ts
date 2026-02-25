@@ -3,15 +3,19 @@ import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export const TOKENS_PER_PIXEL = 100;
+
 export const nodes = pgTable("nodes", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   totalTokens: integer("total_tokens").default(0).notNull(),
+  pixelCredits: integer("pixel_credits").default(0).notNull(),
+  pixelsPlaced: integer("pixels_placed").default(0).notNull(),
   status: text("status").default("offline").notNull(),
   lastSeen: timestamp("last_seen").defaultNow().notNull(),
 });
 
-export const insertNodeSchema = createInsertSchema(nodes).omit({ id: true, totalTokens: true, lastSeen: true });
+export const insertNodeSchema = createInsertSchema(nodes).omit({ id: true, totalTokens: true, pixelCredits: true, pixelsPlaced: true, lastSeen: true });
 
 export type Node = typeof nodes.$inferSelect;
 export type InsertNode = z.infer<typeof insertNodeSchema>;
