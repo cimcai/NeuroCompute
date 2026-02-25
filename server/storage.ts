@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { nodes, type Node, type InsertNode, type UpdateNodeRequest } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { nodes, messages, type Node, type InsertNode, type Message, type InsertMessage } from "@shared/schema";
+import { eq, desc } from "drizzle-orm";
 
 export interface IStorage {
   getNodes(): Promise<Node[]>;
@@ -8,6 +8,8 @@ export interface IStorage {
   createNode(node: InsertNode): Promise<Node>;
   updateNodeTokens(id: number, addedTokens: number): Promise<Node>;
   updateNodeStatus(id: number, status: string): Promise<Node>;
+  getMessages(limit?: number): Promise<Message[]>;
+  createMessage(msg: InsertMessage): Promise<Message>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -45,6 +47,16 @@ export class DatabaseStorage implements IStorage {
       .where(eq(nodes.id, id))
       .returning();
     return updated;
+  }
+
+  async getMessages(limit = 50): Promise<Message[]> {
+    const msgs = await db.select().from(messages).orderBy(desc(messages.createdAt)).limit(limit);
+    return msgs.reverse();
+  }
+
+  async createMessage(msg: InsertMessage): Promise<Message> {
+    const [created] = await db.insert(messages).values(msg).returning();
+    return created;
   }
 }
 

@@ -38,10 +38,30 @@ export async function registerRoutes(
     }
   });
 
-  // Setup WebSocket server
-  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+  app.get(api.messages.list.path, async (req, res) => {
+    const msgs = await storage.getMessages();
+    res.json(msgs);
+  });
 
+  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
   const clients = new Map<number, WebSocket>();
+  const pendingChats: Array<{ content: string; senderName: string; resolve: (response: string) => void }> = [];
+
+  function broadcast(msg: string, exclude?: WebSocket) {
+    wss.clients.forEach((c) => {
+      if (c !== exclude && c.readyState === WebSocket.OPEN) {
+        c.send(msg);
+      }
+    });
+  }
+
+  function broadcastAll(msg: string) {
+    wss.clients.forEach((c) => {
+      if (c.readyState === WebSocket.OPEN) {
+        c.send(msg);
+      }
+    });
+  }
 
   wss.on("connection", (socket) => {
     let nodeId: number | null = null;
@@ -49,7 +69,7 @@ export async function registerRoutes(
     socket.on("message", async (data) => {
       try {
         const message = JSON.parse(data.toString());
-        
+
         if (message.type === "nodeJoined") {
           const parsed = wsSchema.send.nodeJoined.parse(message.payload);
           nodeId = parsed.id;
@@ -57,34 +77,61 @@ export async function registerRoutes(
           await storage.updateNodeStatus(nodeId, "computing");
           const node = await storage.getNode(nodeId);
           if (node) {
-            // Broadcast join
-            const msg = JSON.stringify({ type: "nodeJoined", payload: { id: node.id, name: node.name } });
-            wss.clients.forEach((c) => {
-              if (c !== socket && c.readyState === WebSocket.OPEN) {
-                c.send(msg);
-              }
-            });
+            broadcast(
+              JSON.stringify({ type: "nodeJoined", payload: { id: node.id, name: node.name } }),
+              socket
+            );
           }
         } else if (message.type === "stats") {
           if (!nodeId) return;
           const parsed = wsSchema.send.stats.parse(message.payload);
           const updated = await storage.updateNodeTokens(nodeId, parsed.tokensGenerated);
-          
-          // Broadcast stats update
-          const msg = JSON.stringify({
-            type: "statsUpdate",
-            payload: {
-              id: nodeId,
-              totalTokens: updated.totalTokens,
-              status: updated.status,
-              tokensPerSecond: parsed.tokensPerSecond,
-            },
+          broadcastAll(
+            JSON.stringify({
+              type: "statsUpdate",
+              payload: {
+                id: nodeId,
+                totalTokens: updated.totalTokens,
+                status: updated.status,
+                tokensPerSecond: parsed.tokensPerSecond,
+              },
+            })
+          );
+        } else if (message.type === "chatMessage") {
+          const parsed = wsSchema.send.chatMessage.parse(message.payload);
+          const saved = await storage.createMessage({
+            role: "user",
+            content: parsed.content,
+            senderName: parsed.senderName,
+            nodeId: null,
           });
-          wss.clients.forEach((c) => {
-            if (c.readyState === WebSocket.OPEN) {
-              c.send(msg);
-            }
+          broadcastAll(
+            JSON.stringify({
+              type: "chatMessage",
+              payload: { id: saved.id, content: saved.content, senderName: saved.senderName, role: "user" },
+            })
+          );
+          // Queue for any compute node to pick up
+          broadcastAll(
+            JSON.stringify({
+              type: "chatPending",
+              payload: { content: parsed.content },
+            })
+          );
+        } else if (message.type === "chatResponse") {
+          const parsed = wsSchema.send.chatResponse.parse(message.payload);
+          const saved = await storage.createMessage({
+            role: "assistant",
+            content: parsed.content,
+            senderName: parsed.nodeName,
+            nodeId: parsed.nodeId,
           });
+          broadcastAll(
+            JSON.stringify({
+              type: "chatMessage",
+              payload: { id: saved.id, content: saved.content, senderName: saved.nodeName, role: "assistant" },
+            })
+          );
         }
       } catch (err) {
         console.error("WS error:", err);
@@ -95,12 +142,9 @@ export async function registerRoutes(
       if (nodeId) {
         clients.delete(nodeId);
         await storage.updateNodeStatus(nodeId, "offline");
-        const msg = JSON.stringify({ type: "nodeLeft", payload: { id: nodeId } });
-        wss.clients.forEach((c) => {
-          if (c.readyState === WebSocket.OPEN) {
-            c.send(msg);
-          }
-        });
+        broadcastAll(
+          JSON.stringify({ type: "nodeLeft", payload: { id: nodeId } })
+        );
       }
     });
   });

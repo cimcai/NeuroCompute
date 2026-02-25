@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { insertNodeSchema, nodes } from "./schema";
+import { insertNodeSchema, insertMessageSchema, nodes, messages } from "./schema";
 
 export const errorSchemas = {
   validation: z.object({ message: z.string(), field: z.string().optional() }),
@@ -32,7 +32,16 @@ export const api = {
         201: z.custom<typeof nodes.$inferSelect>(),
         400: errorSchemas.validation,
       },
-    }
+    },
+  },
+  messages: {
+    list: {
+      method: "GET" as const,
+      path: "/api/messages" as const,
+      responses: {
+        200: z.array(z.custom<typeof messages.$inferSelect>()),
+      },
+    },
   },
 };
 
@@ -40,11 +49,16 @@ export const ws = {
   send: {
     nodeJoined: z.object({ id: z.number() }),
     stats: z.object({ tokensGenerated: z.number(), tokensPerSecond: z.number() }),
+    chatMessage: z.object({ content: z.string(), senderName: z.string() }),
+    chatResponse: z.object({ content: z.string(), nodeId: z.number(), nodeName: z.string() }),
   },
   receive: {
     nodeJoined: z.object({ id: z.number(), name: z.string() }),
     nodeLeft: z.object({ id: z.number() }),
     statsUpdate: z.object({ id: z.number(), totalTokens: z.number(), status: z.string(), tokensPerSecond: z.number() }),
+    chatMessage: z.object({ id: z.number(), content: z.string(), senderName: z.string(), role: z.string() }),
+    chatResponseChunk: z.object({ messageId: z.number(), chunk: z.string(), done: z.boolean(), nodeName: z.string() }),
+    chatPending: z.object({ content: z.string() }),
   },
 };
 
