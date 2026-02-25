@@ -16,6 +16,8 @@ export interface IStorage {
   getBridgeGames(limit?: number): Promise<BridgeGame[]>;
   getBridgeGameBySession(sessionId: string): Promise<BridgeGame | undefined>;
   getBridgeStats(): Promise<{ modelId: string; gamesPlayed: number; gamesWon: number; totalCorrect: number; totalAnswered: number }[]>;
+  markAllNodesOffline(): Promise<void>;
+  markStaleNodesOffline(staleMinutes?: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -122,6 +124,17 @@ export class DatabaseStorage implements IStorage {
       .where(sql`${bridgeGames.won} != 'pending'`)
       .groupBy(bridgeGames.modelId);
     return results;
+  }
+
+  async markAllNodesOffline(): Promise<void> {
+    await db.update(nodes).set({ status: "offline" });
+  }
+
+  async markStaleNodesOffline(staleMinutes = 5): Promise<void> {
+    const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000);
+    await db.update(nodes)
+      .set({ status: "offline" })
+      .where(sql`${nodes.status} = 'computing' AND ${nodes.lastSeen} < ${cutoff}`);
   }
 }
 

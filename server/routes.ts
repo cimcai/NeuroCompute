@@ -292,6 +292,17 @@ export async function registerRoutes(
     }
   });
 
+  await storage.markAllNodesOffline();
+  console.log("[startup] Reset all stale nodes to offline");
+
+  setInterval(async () => {
+    try {
+      await storage.markStaleNodesOffline(2);
+    } catch (err) {
+      console.error("Stale node sweep error:", err);
+    }
+  }, 60_000);
+
   // WebSocket
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
   const clients = new Map<number, WebSocket>();
