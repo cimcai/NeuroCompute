@@ -46,6 +46,9 @@ export class DatabaseStorage implements IStorage {
     const oldCreditsFromTokens = Math.floor(node.totalTokens / TOKENS_PER_PIXEL);
     const newCreditsFromTokens = Math.floor(newTotalTokens / TOKENS_PER_PIXEL);
     const earnedCredits = newCreditsFromTokens - oldCreditsFromTokens;
+    if (earnedCredits > 0) {
+      console.log(`[pixel] Node ${node.name} earned ${earnedCredits} pixel credit(s)! Total: ${node.pixelCredits + earnedCredits} credits (${newTotalTokens} tokens)`);
+    }
     const [updated] = await db.update(nodes)
       .set({
         totalTokens: newTotalTokens,
