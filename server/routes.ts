@@ -352,6 +352,8 @@ export async function registerRoutes(
               payload: {
                 id: nodeId,
                 totalTokens: updated.totalTokens,
+                pixelCredits: updated.pixelCredits,
+                pixelsPlaced: updated.pixelsPlaced,
                 status: updated.status,
                 tokensPerSecond: parsed.tokensPerSecond,
               },

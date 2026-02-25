@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNodes } from "@/hooks/use-nodes";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Activity, Cpu, Server, Trophy } from "lucide-react";
+import { Activity, Cpu, Server, Trophy, Paintbrush } from "lucide-react";
 import { Node } from "@shared/schema";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -26,11 +26,10 @@ export function Leaderboard() {
         if (exists) {
           return prev.map(n => 
             n.id === data.id 
-              ? { ...n, totalTokens: data.totalTokens, status: data.status }
+              ? { ...n, totalTokens: data.totalTokens, pixelCredits: data.pixelCredits ?? n.pixelCredits, pixelsPlaced: data.pixelsPlaced ?? n.pixelsPlaced, status: data.status }
               : n
           ).sort((a, b) => b.totalTokens - a.totalTokens);
         }
-        // If we don't have it, we might want to fetch it, or wait for next list update
         return prev;
       });
     });
@@ -43,6 +42,8 @@ export function Leaderboard() {
           id: data.id,
           name: data.name,
           totalTokens: 0,
+          pixelCredits: 0,
+          pixelsPlaced: 0,
           status: "offline",
           lastSeen: new Date()
         };
@@ -115,9 +116,24 @@ export function Leaderboard() {
                       </div>
                     </div>
                   </div>
-                  <div className="text-right font-mono text-primary">
-                    {node.totalTokens.toLocaleString()}
-                    <span className="text-xs text-muted-foreground ml-1">tkns</span>
+                  <div className="text-right">
+                    <div className="font-mono text-primary">
+                      {node.totalTokens.toLocaleString()}
+                      <span className="text-xs text-muted-foreground ml-1">tkns</span>
+                    </div>
+                    {(node.pixelCredits > 0 || node.pixelsPlaced > 0) && (
+                      <div className="flex items-center justify-end gap-1 mt-0.5">
+                        <Paintbrush className="w-3 h-3 text-fuchsia-400" />
+                        <span className="text-xs font-mono text-fuchsia-400" data-testid={`text-pixel-credits-${node.id}`}>
+                          {node.pixelCredits}
+                        </span>
+                        {node.pixelsPlaced > 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            ({node.pixelsPlaced} placed)
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               ))}
