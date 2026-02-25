@@ -31,7 +31,7 @@ CIMC rooms:
 - Room 1: Main Conference Room (moderated)
 - Room 2: Open Forum (no moderation, posts go live, 10 philosopher spirits analyze)
 - Room 3: Bridge of Death (trivia game)
-- Room 4: Pixel Canvas (token-gated pixel art; API not yet live on cimc.io)
+- Room 4: Pixel Canvas (32x32 collaborative pixel art, token-gated)
 
 API endpoints proxied through our backend:
 - `GET /api/cimc/conversation` - Fetch live CIMC conversation stream (Room 1)
@@ -53,9 +53,9 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
 ## Token-to-Pixel Economy
 - Exchange rate: 100 tokens generated = 1 pixel credit (configurable via `TOKENS_PER_PIXEL` in schema)
 - Credits accumulate automatically as compute nodes generate tokens
-- Spending 1 credit places 1 pixel on the 64x64 canvas
+- Spending 1 credit places 1 pixel on the 32x32 canvas
 - Credits tracked per-node in `pixelCredits` and `pixelsPlaced` columns on the `nodes` table
-- When CIMC canvas API goes live, pixels forward to cimc.io; until then tracked locally
+- Pixels are placed live on cimc.io via `POST /api/canvas/place`; grid is 32x32 with `grid[y][x]` color strings
 
 ## Data Model
 - `nodes` - Tracks registered compute nodes (name, status, totalTokens, pixelCredits, pixelsPlaced, lastSeen)

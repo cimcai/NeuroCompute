@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { TOKENS_PER_PIXEL } from "@shared/schema";
 import { Paintbrush, Coins, Grid3X3, Info, Minus, Plus, RotateCcw } from "lucide-react";
 
-const CANVAS_SIZE = 64;
-const CELL_SIZE = 8;
+const CANVAS_SIZE = 32;
+const CELL_SIZE = 16;
 
 const COLOR_PALETTE = [
   "#00FFFF", "#FF00FF", "#FFFF00", "#FF0000", "#00FF00", "#0000FF",
@@ -19,17 +19,9 @@ interface PixelCanvasProps {
   nodeId: number | null;
 }
 
-interface LocalPixel {
-  x: number;
-  y: number;
-  color: string;
-  agent: string;
-}
-
 export function PixelCanvas({ nodeId }: PixelCanvasProps) {
   const [selectedColor, setSelectedColor] = useState(COLOR_PALETTE[0]);
   const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number } | null>(null);
-  const [localPixels, setLocalPixels] = useState<LocalPixel[]>([]);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -42,9 +34,9 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
     refetchInterval: 5000,
   });
 
-  const canvasQuery = useQuery({
+  const canvasQuery = useQuery<{ size: number; grid: string[][]; totalPlacements: number; uniqueAgents: number }>({
     queryKey: ["/api/canvas"],
-    refetchInterval: 15000,
+    refetchInterval: 10000,
   });
 
   const placeMutation = useMutation({
@@ -52,8 +44,7 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
       const res = await apiRequest("POST", "/api/canvas/place", { x, y, color, nodeId });
       return res.json();
     },
-    onSuccess: (data, variables) => {
-      setLocalPixels((prev) => [...prev, { x: variables.x, y: variables.y, color: variables.color, agent: "you" }]);
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/canvas/credits", nodeId?.toString() ?? ""] });
       queryClient.invalidateQueries({ queryKey: ["/api/canvas"] });
     },
@@ -63,6 +54,8 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
   const pixelsPlaced = creditsQuery.data?.pixelsPlaced ?? 0;
   const totalTokens = creditsQuery.data?.totalTokens ?? 0;
   const tokensToNextCredit = TOKENS_PER_PIXEL - (totalTokens % TOKENS_PER_PIXEL);
+  const totalPlacements = canvasQuery.data?.totalPlacements ?? 0;
+  const uniqueAgents = canvasQuery.data?.uniqueAgents ?? 0;
 
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -82,7 +75,20 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
     ctx.fillStyle = "#0a0a0f";
     ctx.fillRect(0, 0, CANVAS_SIZE * CELL_SIZE, CANVAS_SIZE * CELL_SIZE);
 
-    ctx.strokeStyle = "rgba(0, 255, 255, 0.05)";
+    const grid = canvasQuery.data?.grid;
+    if (Array.isArray(grid)) {
+      for (let y = 0; y < grid.length; y++) {
+        for (let x = 0; x < grid[y].length; x++) {
+          const color = grid[y][x];
+          if (color && color !== "#000000") {
+            ctx.fillStyle = color;
+            ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+          }
+        }
+      }
+    }
+
+    ctx.strokeStyle = "rgba(0, 255, 255, 0.08)";
     ctx.lineWidth = 0.5;
     for (let i = 0; i <= CANVAS_SIZE; i++) {
       ctx.beginPath();
@@ -95,31 +101,16 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
       ctx.stroke();
     }
 
-    const grid = (canvasQuery.data as any)?.grid;
-    if (Array.isArray(grid)) {
-      for (const pixel of grid) {
-        if (pixel && pixel.color) {
-          ctx.fillStyle = pixel.color;
-          ctx.fillRect(pixel.x * CELL_SIZE, pixel.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
-        }
-      }
-    }
-
-    for (const pixel of localPixels) {
-      ctx.fillStyle = pixel.color;
-      ctx.fillRect(pixel.x * CELL_SIZE, pixel.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
-    }
-
     if (hoveredCell) {
       ctx.fillStyle = selectedColor + "66";
       ctx.fillRect(hoveredCell.x * CELL_SIZE, hoveredCell.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
       ctx.strokeStyle = selectedColor;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 2;
       ctx.strokeRect(hoveredCell.x * CELL_SIZE, hoveredCell.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
     }
 
     ctx.restore();
-  }, [canvasQuery.data, localPixels, hoveredCell, selectedColor, zoom, pan]);
+  }, [canvasQuery.data, hoveredCell, selectedColor, zoom, pan]);
 
   useEffect(() => {
     drawCanvas();
@@ -166,7 +157,7 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
     }
   };
 
-  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleMouseUp = () => {
     if (isPanning) {
       setIsPanning(false);
       return;
@@ -186,7 +177,9 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
     setZoom((z) => Math.max(0.5, Math.min(4, z + (e.deltaY > 0 ? -0.2 : 0.2))));
   };
 
-  const isAvailable = !!(canvasQuery.data as any)?.grid?.length || localPixels.length > 0;
+  const currentPixelColor = hoveredCell && canvasQuery.data?.grid
+    ? canvasQuery.data.grid[hoveredCell.y]?.[hoveredCell.x] ?? "#000000"
+    : null;
 
   return (
     <Card className="overflow-hidden border-primary/20">
@@ -213,19 +206,26 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <div className="flex items-center gap-2 bg-secondary/50 rounded-lg px-3 py-2 border border-white/5">
             <Coins className="w-4 h-4 text-primary" />
             <div>
               <div className="text-lg font-mono font-bold text-primary" data-testid="text-pixel-credits">{credits}</div>
-              <div className="text-xs text-muted-foreground">Pixel Credits</div>
+              <div className="text-xs text-muted-foreground">Credits</div>
             </div>
           </div>
           <div className="flex items-center gap-2 bg-secondary/50 rounded-lg px-3 py-2 border border-white/5">
             <Paintbrush className="w-4 h-4 text-fuchsia-400" />
             <div>
               <div className="text-lg font-mono font-bold text-fuchsia-400" data-testid="text-pixels-placed">{pixelsPlaced}</div>
-              <div className="text-xs text-muted-foreground">Pixels Placed</div>
+              <div className="text-xs text-muted-foreground">You Placed</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 bg-secondary/50 rounded-lg px-3 py-2 border border-white/5">
+            <Grid3X3 className="w-4 h-4 text-amber-400" />
+            <div>
+              <div className="text-lg font-mono font-bold text-amber-400" data-testid="text-total-placements">{totalPlacements}</div>
+              <div className="text-xs text-muted-foreground">{uniqueAgents} agent{uniqueAgents !== 1 ? "s" : ""}</div>
             </div>
           </div>
         </div>
@@ -289,8 +289,14 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
         </div>
 
         {hoveredCell && (
-          <div className="text-xs text-muted-foreground font-mono text-center" data-testid="text-hover-coords">
-            ({hoveredCell.x}, {hoveredCell.y})
+          <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground font-mono" data-testid="text-hover-coords">
+            <span>({hoveredCell.x}, {hoveredCell.y})</span>
+            {currentPixelColor && currentPixelColor !== "#000000" && (
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 rounded-sm border border-white/20" style={{ backgroundColor: currentPixelColor }} />
+                {currentPixelColor}
+              </span>
+            )}
           </div>
         )}
 

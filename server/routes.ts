@@ -2,9 +2,6 @@ import type { Express } from "express";
 import { type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { db } from "./db";
-import { nodes } from "@shared/schema";
-import { eq } from "drizzle-orm";
 import { api, ws as wsSchema } from "@shared/routes";
 import { z } from "zod";
 import * as cimc from "./cimc";
@@ -234,12 +231,12 @@ export async function registerRoutes(
     try {
       const data = await cimc.getCanvas();
       if (!data) {
-        return res.json({ status: "unavailable", message: "Canvas API not yet deployed on CIMC", grid: [], width: 64, height: 64 });
+        return res.status(502).json({ message: "Canvas API returned invalid response" });
       }
       res.json(data);
     } catch (err) {
       console.error("Canvas fetch error:", err);
-      res.json({ status: "unavailable", message: "Canvas API not yet deployed on CIMC", grid: [], width: 64, height: 64 });
+      res.status(502).json({ message: "Failed to fetch canvas from CIMC" });
     }
   });
 
@@ -250,25 +247,12 @@ export async function registerRoutes(
         return res.status(400).json({ message: "x, y, color, and nodeId are required" });
       }
       const node = await storage.spendPixelCredit(Number(nodeId));
-      try {
-        const result = await cimc.placePixel(Number(x), Number(y), color, `NeuroCompute-${node.name}`);
-        broadcastAll(JSON.stringify({
-          type: "pixelPlaced",
-          payload: { x: Number(x), y: Number(y), color, agent: node.name, nodeId: node.id, pixelCredits: node.pixelCredits },
-        }));
-        res.json({ pixel: result, node });
-      } catch (cimcErr) {
-        await storage.updateNodeTokens(node.id, 0);
-        const [refunded] = await db.update(nodes)
-          .set({ pixelCredits: node.pixelCredits + 1, pixelsPlaced: node.pixelsPlaced - 1 })
-          .where(eq(nodes.id, node.id))
-          .returning();
-        broadcastAll(JSON.stringify({
-          type: "pixelPlaced",
-          payload: { x: Number(x), y: Number(y), color, agent: node.name, nodeId: node.id, pixelCredits: node.pixelCredits, local: true },
-        }));
-        res.json({ pixel: { x, y, color, agent: node.name, local: true }, node: refunded || node, note: "CIMC canvas not yet available; pixel tracked locally" });
-      }
+      const result = await cimc.placePixel(Number(x), Number(y), color, `NeuroCompute-${node.name}`);
+      broadcastAll(JSON.stringify({
+        type: "pixelPlaced",
+        payload: { x: Number(x), y: Number(y), color, agent: node.name, nodeId: node.id, pixelCredits: node.pixelCredits },
+      }));
+      res.json({ pixel: result, node });
     } catch (err: any) {
       console.error("Canvas place error:", err);
       if (err.message === "Not enough pixel credits") {
