@@ -369,6 +369,22 @@ export async function registerRoutes(
         type: "pixelPlaced",
         payload: { x: Number(x), y: Number(y), color, agent: node.name, nodeId: node.id, pixelCredits: node.pixelCredits },
       }));
+      const journalMsg = `Placed a ${color} pixel at (${Number(x)}, ${Number(y)}) on the canvas. ${node.pixelCredits} credits remaining.`;
+      const entry = await storage.createJournalEntry({
+        nodeName: node.name,
+        nodeId: node.id,
+        content: journalMsg,
+      });
+      broadcastAll(JSON.stringify({
+        type: "journalEntry",
+        payload: {
+          id: entry.id,
+          nodeName: entry.nodeName,
+          nodeId: entry.nodeId,
+          content: entry.content,
+          createdAt: entry.createdAt.toISOString(),
+        },
+      }));
       res.json({ pixel: result, node });
     } catch (err: any) {
       console.error("Canvas place error:", err);

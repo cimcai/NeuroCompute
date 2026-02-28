@@ -147,8 +147,8 @@ async function runBridgeAgent(config: OrchestratorConfig) {
 
 async function runPixelAgent(config: OrchestratorConfig) {
   try {
-    const nodes = await storage.getNodes();
-    const withCredits = nodes.filter((n) => n.pixelCredits > 0);
+    const allNodes = await storage.getNodes();
+    const withCredits = allNodes.filter((n) => n.pixelCredits > 0);
     if (withCredits.length === 0) return;
 
     let canvasData: any;
@@ -208,6 +208,25 @@ async function runPixelAgent(config: OrchestratorConfig) {
               agent: node.name,
               nodeId: node.id,
               pixelCredits: updated.pixelCredits,
+            },
+          })
+        );
+
+        const journalMsg = `Placed a ${color} pixel at (${x}, ${y}) on the canvas. ${updated.pixelCredits} credits remaining.`;
+        const entry = await storage.createJournalEntry({
+          nodeName: node.name,
+          nodeId: node.id,
+          content: journalMsg,
+        });
+        config.broadcastAll(
+          JSON.stringify({
+            type: "journalEntry",
+            payload: {
+              id: entry.id,
+              nodeName: entry.nodeName,
+              nodeId: entry.nodeId,
+              content: entry.content,
+              createdAt: entry.createdAt.toISOString(),
             },
           })
         );
