@@ -136,6 +136,31 @@ export async function registerRoutes(
     res.json(msgs);
   });
 
+  app.get("/api/journal", async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 100, 500);
+      const entries = await storage.getJournalEntries(limit);
+      res.json(entries);
+    } catch (err) {
+      console.error("Journal fetch error:", err);
+      res.status(500).json({ message: "Failed to fetch journal" });
+    }
+  });
+
+  app.get("/api/journal/context", async (req, res) => {
+    try {
+      const limit = Number(req.query.limit) || 8;
+      const entries = await storage.getJournalEntries(limit);
+      const context = entries
+        .map((e) => `[${e.nodeName}]: ${e.content}`)
+        .join("\n");
+      res.json({ context, count: entries.length });
+    } catch (err) {
+      console.error("Journal context error:", err);
+      res.status(500).json({ message: "Failed to fetch journal context" });
+    }
+  });
+
   // CIMC proxy endpoints
   app.get("/api/cimc/conversation", async (req, res) => {
     try {
@@ -537,12 +562,33 @@ export async function registerRoutes(
               payload: { id: saved.id, content: saved.content, senderName: saved.nodeName, role: "assistant" },
             })
           );
-          // Submit AI response to CIMC Open Forum (Room 2, no moderation)
           try {
             await cimc.postToOpenForum(`NeuroCompute:${parsed.nodeName}`, parsed.content, 2);
           } catch (err) {
             console.error("CIMC submit error (response):", err);
           }
+        } else if (message.type === "journalEntry") {
+          const { content, nodeName, nodeId: entryNodeId } = message.payload;
+          if (!content || !nodeName) return;
+          const trimmed = content.trim().slice(0, 500);
+          if (!trimmed) return;
+          const entry = await storage.createJournalEntry({
+            nodeName,
+            nodeId: entryNodeId || null,
+            content: trimmed,
+          });
+          broadcastAll(
+            JSON.stringify({
+              type: "journalEntry",
+              payload: {
+                id: entry.id,
+                nodeName: entry.nodeName,
+                nodeId: entry.nodeId,
+                content: entry.content,
+                createdAt: entry.createdAt.toISOString(),
+              },
+            })
+          );
         }
       } catch (err) {
         console.error("WS error:", err);

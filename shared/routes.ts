@@ -52,6 +52,7 @@ export const ws = {
     chatMessage: z.object({ content: z.string(), senderName: z.string() }),
     chatResponse: z.object({ content: z.string(), nodeId: z.number(), nodeName: z.string() }),
     bridgeAnswer: z.object({ gameId: z.number(), answer: z.string(), nodeId: z.number(), nodeName: z.string() }),
+    journalEntry: z.object({ content: z.string(), nodeName: z.string(), nodeId: z.number() }),
   },
   receive: {
     nodeJoined: z.object({ id: z.number(), name: z.string() }),
@@ -60,6 +61,7 @@ export const ws = {
     chatMessage: z.object({ id: z.number(), content: z.string(), senderName: z.string(), role: z.string() }),
     chatResponseChunk: z.object({ messageId: z.number(), chunk: z.string(), done: z.boolean(), nodeName: z.string() }),
     chatPending: z.object({ content: z.string() }),
+    journalEntry: z.object({ id: z.number(), nodeName: z.string(), nodeId: z.number().nullable(), content: z.string(), createdAt: z.string() }),
     bridgeQuestion: z.object({ gameId: z.number(), sessionId: z.string(), question: z.string(), questionNumber: z.number(), category: z.string(), modelId: z.string() }),
     bridgeResult: z.object({ gameId: z.number(), correct: z.boolean(), message: z.string(), gameOver: z.boolean(), won: z.boolean(), score: z.object({ answered: z.number(), correct: z.number(), total: z.number() }) }),
     bridgeUpdate: z.object({ game: z.any() }),

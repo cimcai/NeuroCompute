@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { nodes, messages, bridgeGames, TOKENS_PER_PIXEL, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame } from "@shared/schema";
+import { nodes, messages, bridgeGames, journalEntries, TOKENS_PER_PIXEL, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type JournalEntry, type InsertJournalEntry } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 
 export interface IStorage {
@@ -18,6 +18,8 @@ export interface IStorage {
   getBridgeStats(): Promise<{ modelId: string; gamesPlayed: number; gamesWon: number; totalCorrect: number; totalAnswered: number }[]>;
   markAllNodesOffline(): Promise<void>;
   markStaleNodesOffline(staleMinutes?: number): Promise<void>;
+  getJournalEntries(limit?: number): Promise<JournalEntry[]>;
+  createJournalEntry(entry: InsertJournalEntry): Promise<JournalEntry>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -138,6 +140,16 @@ export class DatabaseStorage implements IStorage {
     await db.update(nodes)
       .set({ status: "offline" })
       .where(sql`${nodes.status} = 'computing' AND ${nodes.lastSeen} < ${cutoff}`);
+  }
+
+  async getJournalEntries(limit = 100): Promise<JournalEntry[]> {
+    const entries = await db.select().from(journalEntries).orderBy(desc(journalEntries.createdAt)).limit(limit);
+    return entries.reverse();
+  }
+
+  async createJournalEntry(entry: InsertJournalEntry): Promise<JournalEntry> {
+    const [created] = await db.insert(journalEntries).values(entry).returning();
+    return created;
   }
 }
 

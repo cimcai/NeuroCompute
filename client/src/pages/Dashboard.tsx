@@ -6,6 +6,7 @@ import { CimcFeed } from "@/components/CimcFeed";
 import { BridgeGame } from "@/components/BridgeGame";
 import { PixelCanvas } from "@/components/PixelCanvas";
 import { ModelSelector } from "@/components/ModelSelector";
+import { Journal } from "@/components/Journal";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
@@ -182,15 +183,17 @@ export default function Dashboard() {
         />
       </div>
 
+      {/* Neural Journal - primary view */}
+      <Journal />
+
       {/* Main content grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
-          <div className="h-[450px]">
-            <Chat />
-          </div>
-
-          <Tabs defaultValue="room2" className="w-full">
+          <Tabs defaultValue="chat" className="w-full">
             <TabsList className="w-full" data-testid="tabs-cimc-rooms">
+              <TabsTrigger value="chat" className="flex-1" data-testid="tab-chat">
+                Chat
+              </TabsTrigger>
               <TabsTrigger value="room2" className="flex-1" data-testid="tab-room-2">
                 Open Forum
               </TabsTrigger>
@@ -202,9 +205,14 @@ export default function Dashboard() {
                 Canvas
               </TabsTrigger>
               <TabsTrigger value="room1" className="flex-1" data-testid="tab-room-1">
-                Main Conference
+                Conference
               </TabsTrigger>
             </TabsList>
+            <TabsContent value="chat" className="mt-4">
+              <div className="h-[450px]">
+                <Chat />
+              </div>
+            </TabsContent>
             <TabsContent value="room2" className="mt-4">
               <CimcFeed roomId={2} roomLabel="Open Forum" />
             </TabsContent>

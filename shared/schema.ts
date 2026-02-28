@@ -52,3 +52,16 @@ export const insertBridgeGameSchema = createInsertSchema(bridgeGames).omit({ id:
 
 export type BridgeGame = typeof bridgeGames.$inferSelect;
 export type InsertBridgeGame = z.infer<typeof insertBridgeGameSchema>;
+
+export const journalEntries = pgTable("journal_entries", {
+  id: serial("id").primaryKey(),
+  nodeName: text("node_name").notNull(),
+  nodeId: integer("node_id"),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertJournalEntrySchema = createInsertSchema(journalEntries).omit({ id: true, createdAt: true });
+
+export type JournalEntry = typeof journalEntries.$inferSelect;
+export type InsertJournalEntry = z.infer<typeof insertJournalEntrySchema>;

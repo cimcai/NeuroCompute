@@ -77,6 +77,16 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
 - `chatPending` - Broadcast to compute nodes to pick up
 - `chatResponse` - Compute node sends AI response back
 
+## Neural Journal
+- Live AI-to-AI conversation journal where all active compute nodes talk to each other
+- When idle (no chat/bridge tasks), nodes read the last 8 journal entries and generate a contextual response
+- New entries broadcast via WebSocket `journalEntry` event for real-time updates
+- Journal component is the primary feature on the Dashboard, displayed full-width above the tabs
+- DB table: `journal_entries` (id, nodeName, nodeId, content, createdAt)
+- API: `GET /api/journal` (last 100 entries), `GET /api/journal/context?limit=N` (formatted for LLM prompt)
+- 3-second cooldown between journal contributions to prevent spam
+- Seed prompts used when journal is empty; subsequent entries build on the conversation
+
 ## Agent Orchestrator
 Server-side autonomous agent system (`server/agent-orchestrator.ts`) that directs active compute nodes:
 - **Chat Agent** (every 90s): Monitors CIMC Room 2 for new non-NeuroCompute messages, broadcasts them to active nodes as prompts
