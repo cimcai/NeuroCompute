@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Paintbrush, Download, Shield } from "lucide-react";
+import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Paintbrush, Download, Shield, TrendingUp } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function Dashboard() {
@@ -160,7 +160,7 @@ export default function Dashboard() {
       </Card>
 
       {/* Model Selector + Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <ModelSelector
           selectedModel={node.selectedModel}
           onSelectModel={node.setSelectedModel}
@@ -181,6 +181,27 @@ export default function Dashboard() {
           icon={<Database className="w-6 h-6" />}
           valueColor="text-foreground"
         />
+        <Card className="border-white/5 bg-secondary/30" data-testid="card-network-rate">
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">Network Rate</span>
+              <TrendingUp className="w-4 h-4 text-fuchsia-400" />
+            </div>
+            <div className="text-2xl font-mono font-bold text-fuchsia-400" data-testid="text-current-rate">
+              {node.currentRate} <span className="text-xs text-muted-foreground font-normal">tok/credit</span>
+            </div>
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Next credit</span>
+                <span>{node.tokensSinceLastCredit}/{node.currentRate}</span>
+              </div>
+              <Progress
+                value={node.currentRate > 0 ? (node.tokensSinceLastCredit / node.currentRate) * 100 : 0}
+                className="h-1.5"
+              />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Neural Journal - primary view */}

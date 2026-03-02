@@ -62,7 +62,7 @@ export async function registerRoutes(
           pixelCreditsEarned: node.pixelCredits + node.pixelsPlaced,
           pixelCreditsRemaining: node.pixelCredits,
           pixelsPlaced: node.pixelsPlaced,
-          tokensPerPixelCredit: 100,
+          tokensPerPixelCredit: (await storage.getCurrentPixelRate()).rate,
         },
         metadata: {
           issuedAt: new Date().toISOString(),
@@ -134,6 +134,16 @@ export async function registerRoutes(
   app.get(api.messages.list.path, async (req, res) => {
     const msgs = await storage.getMessages();
     res.json(msgs);
+  });
+
+  app.get("/api/network/rate", async (req, res) => {
+    try {
+      const { rate, totalNetworkTokens } = await storage.getCurrentPixelRate();
+      res.json({ rate, totalNetworkTokens });
+    } catch (err) {
+      console.error("Network rate error:", err);
+      res.status(500).json({ message: "Failed to fetch network rate" });
+    }
   });
 
   app.get("/api/journal", async (req, res) => {
@@ -402,7 +412,8 @@ export async function registerRoutes(
     try {
       const node = await storage.getNode(Number(req.params.nodeId));
       if (!node) return res.status(404).json({ message: "Node not found" });
-      res.json({ pixelCredits: node.pixelCredits, pixelsPlaced: node.pixelsPlaced, totalTokens: node.totalTokens });
+      const { rate } = await storage.getCurrentPixelRate();
+      res.json({ pixelCredits: node.pixelCredits, pixelsPlaced: node.pixelsPlaced, totalTokens: node.totalTokens, tokensSinceLastCredit: node.tokensSinceLastCredit, currentRate: rate });
     } catch (err) {
       console.error("Canvas credits error:", err);
       res.status(500).json({ message: "Failed to fetch credits" });
@@ -462,7 +473,7 @@ export async function registerRoutes(
         } else if (message.type === "stats") {
           if (!nodeId) return;
           const parsed = wsSchema.send.stats.parse(message.payload);
-          const updated = await storage.updateNodeTokens(nodeId, parsed.tokensGenerated);
+          const { node: updated, currentRate } = await storage.updateNodeTokens(nodeId, parsed.tokensGenerated);
           broadcastAll(
             JSON.stringify({
               type: "statsUpdate",
@@ -473,6 +484,8 @@ export async function registerRoutes(
                 pixelsPlaced: updated.pixelsPlaced,
                 status: updated.status,
                 tokensPerSecond: parsed.tokensPerSecond,
+                currentRate,
+                tokensSinceLastCredit: updated.tokensSinceLastCredit,
               },
             })
           );

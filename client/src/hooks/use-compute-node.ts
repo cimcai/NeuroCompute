@@ -32,6 +32,9 @@ export function useComputeNode() {
   const [nodeName, setNodeName] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL_ID);
   const [activeModel, setActiveModel] = useState<string | null>(null);
+  const [currentRate, setCurrentRate] = useState(10);
+  const [tokensSinceLastCredit, setTokensSinceLastCredit] = useState(0);
+  const [totalNetworkTokens, setTotalNetworkTokens] = useState(0);
 
   const engineRef = useRef<MLCEngine | null>(null);
   const isRunningRef = useRef(false);
@@ -51,6 +54,37 @@ export function useComputeNode() {
   useEffect(() => {
     nodeNameRef.current = nodeName;
   }, [nodeName]);
+
+  useEffect(() => {
+    fetch("/api/network/rate")
+      .then(r => r.json())
+      .then(data => {
+        setCurrentRate(data.rate);
+        setTotalNetworkTokens(data.totalNetworkTokens);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!nodeId) return;
+    fetch(`/api/canvas/credits/${nodeId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.tokensSinceLastCredit !== undefined) setTokensSinceLastCredit(data.tokensSinceLastCredit);
+        if (data.currentRate !== undefined) setCurrentRate(data.currentRate);
+      })
+      .catch(() => {});
+  }, [nodeId]);
+
+  useEffect(() => {
+    const unsub = ws.subscribe("statsUpdate", (data: any) => {
+      if (data.currentRate !== undefined) setCurrentRate(data.currentRate);
+      if (data.tokensSinceLastCredit !== undefined && data.id === nodeId) {
+        setTokensSinceLastCredit(data.tokensSinceLastCredit);
+      }
+    });
+    return unsub;
+  }, [ws, nodeId]);
 
   useEffect(() => {
     if (status !== "computing") return;
@@ -277,5 +311,8 @@ export function useComputeNode() {
     startCompute,
     stopCompute,
     wsConnected: ws.connected,
+    currentRate,
+    tokensSinceLastCredit,
+    totalNetworkTokens,
   };
 }

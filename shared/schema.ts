@@ -3,19 +3,28 @@ import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const TOKENS_PER_PIXEL = 100;
+export const BASE_TOKENS_PER_PIXEL = 10;
+export const RATE_SCALE_FACTOR = 1000;
+
+export function getPixelRate(totalNetworkTokens: number): number {
+  return Math.max(
+    BASE_TOKENS_PER_PIXEL,
+    Math.floor(BASE_TOKENS_PER_PIXEL * (1 + Math.log(1 + totalNetworkTokens / RATE_SCALE_FACTOR)))
+  );
+}
 
 export const nodes = pgTable("nodes", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   totalTokens: integer("total_tokens").default(0).notNull(),
+  tokensSinceLastCredit: integer("tokens_since_last_credit").default(0).notNull(),
   pixelCredits: integer("pixel_credits").default(0).notNull(),
   pixelsPlaced: integer("pixels_placed").default(0).notNull(),
   status: text("status").default("offline").notNull(),
   lastSeen: timestamp("last_seen").defaultNow().notNull(),
 });
 
-export const insertNodeSchema = createInsertSchema(nodes).omit({ id: true, totalTokens: true, pixelCredits: true, pixelsPlaced: true, lastSeen: true });
+export const insertNodeSchema = createInsertSchema(nodes).omit({ id: true, totalTokens: true, tokensSinceLastCredit: true, pixelCredits: true, pixelsPlaced: true, lastSeen: true });
 
 export type Node = typeof nodes.$inferSelect;
 export type InsertNode = z.infer<typeof insertNodeSchema>;

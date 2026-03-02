@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TOKENS_PER_PIXEL } from "@shared/schema";
+import { getPixelRate } from "@shared/schema";
 import { Paintbrush, Coins, Grid3X3, Info, Minus, Plus, RotateCcw } from "lucide-react";
 
 const CANVAS_SIZE = 32;
@@ -28,7 +28,7 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const creditsQuery = useQuery<{ pixelCredits: number; pixelsPlaced: number; totalTokens: number }>({
+  const creditsQuery = useQuery<{ pixelCredits: number; pixelsPlaced: number; totalTokens: number; tokensSinceLastCredit: number; currentRate: number }>({
     queryKey: ["/api/canvas/credits", nodeId?.toString() ?? ""],
     enabled: !!nodeId,
     refetchInterval: 5000,
@@ -39,6 +39,11 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
     refetchInterval: 10000,
   });
 
+  const rateQuery = useQuery<{ rate: number; totalNetworkTokens: number }>({
+    queryKey: ["/api/network/rate"],
+    refetchInterval: 15000,
+  });
+
   const placeMutation = useMutation({
     mutationFn: async ({ x, y, color }: { x: number; y: number; color: string }) => {
       const res = await apiRequest("POST", "/api/canvas/place", { x, y, color, nodeId });
@@ -47,13 +52,16 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/canvas/credits", nodeId?.toString() ?? ""] });
       queryClient.invalidateQueries({ queryKey: ["/api/canvas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/network/rate"] });
     },
   });
 
   const credits = creditsQuery.data?.pixelCredits ?? 0;
   const pixelsPlaced = creditsQuery.data?.pixelsPlaced ?? 0;
   const totalTokens = creditsQuery.data?.totalTokens ?? 0;
-  const tokensToNextCredit = TOKENS_PER_PIXEL - (totalTokens % TOKENS_PER_PIXEL);
+  const currentRate = creditsQuery.data?.currentRate ?? rateQuery.data?.rate ?? 10;
+  const tokensSinceLastCredit = creditsQuery.data?.tokensSinceLastCredit ?? 0;
+  const tokensToNextCredit = currentRate - tokensSinceLastCredit;
   const totalPlacements = canvasQuery.data?.totalPlacements ?? 0;
   const uniqueAgents = canvasQuery.data?.uniqueAgents ?? 0;
 
@@ -235,7 +243,7 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
           <span>
             {credits > 0
               ? `${credits} credit${credits !== 1 ? "s" : ""} available. Pick a color and click the grid!`
-              : `${tokensToNextCredit} more tokens until next credit (${TOKENS_PER_PIXEL} tokens = 1 pixel)`}
+              : `${tokensToNextCredit} more tokens until next credit (rate: ${currentRate} tok/credit)`}
           </span>
         </div>
 
@@ -274,7 +282,7 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
               <div className="text-center space-y-2 px-4">
                 <Paintbrush className="w-8 h-8 text-primary mx-auto" />
                 <p className="text-sm font-medium">Start a compute node to earn pixel credits</p>
-                <p className="text-xs text-muted-foreground">Every {TOKENS_PER_PIXEL} tokens = 1 pixel on the canvas</p>
+                <p className="text-xs text-muted-foreground">Current rate: {currentRate} tokens = 1 pixel (scales with network compute)</p>
               </div>
             </div>
           )}

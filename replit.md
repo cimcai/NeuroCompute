@@ -57,11 +57,15 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
 - Signature uses SESSION_SECRET via HMAC-SHA256; tamper-evident (verification fails if any field is modified)
 - Download button appears on the Dashboard once a node is registered
 
-## Token-to-Pixel Economy
-- Exchange rate: 100 tokens generated = 1 pixel credit (configurable via `TOKENS_PER_PIXEL` in schema)
+## Token-to-Pixel Economy (Dynamic Rate)
+- Variable rate: starts at 10 tok/credit, scales logarithmically with total network compute
+- Formula: `rate = BASE(10) × (1 + ln(1 + totalNetworkTokens / 1000))`; see `getPixelRate()` in `shared/schema.ts`
+- Each node tracks `tokensSinceLastCredit` for partial-credit progress across rate changes
 - Credits accumulate automatically as compute nodes generate tokens
 - Spending 1 credit places 1 pixel on the 32x32 canvas
-- Credits tracked per-node in `pixelCredits` and `pixelsPlaced` columns on the `nodes` table
+- Credits tracked per-node in `pixelCredits`, `pixelsPlaced`, and `tokensSinceLastCredit` columns on the `nodes` table
+- `GET /api/network/rate` returns current rate and total network tokens
+- Rate displayed in Dashboard stat card and PixelCanvas component
 - Pixels are placed live on cimc.io via `POST /api/canvas/place`; grid is 32x32 with `grid[y][x]` color strings
 
 ## Data Model

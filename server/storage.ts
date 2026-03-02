@@ -1,14 +1,16 @@
 import { db } from "./db";
-import { nodes, messages, bridgeGames, journalEntries, TOKENS_PER_PIXEL, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type JournalEntry, type InsertJournalEntry } from "@shared/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { nodes, messages, bridgeGames, journalEntries, getPixelRate, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type JournalEntry, type InsertJournalEntry } from "@shared/schema";
+import { eq, desc, sql, sum } from "drizzle-orm";
 
 export interface IStorage {
   getNodes(): Promise<Node[]>;
   getNode(id: number): Promise<Node | undefined>;
   createNode(node: InsertNode): Promise<Node>;
-  updateNodeTokens(id: number, addedTokens: number): Promise<Node>;
+  updateNodeTokens(id: number, addedTokens: number): Promise<{ node: Node; currentRate: number; earnedCredits: number }>;
   updateNodeStatus(id: number, status: string): Promise<Node>;
   spendPixelCredit(nodeId: number): Promise<Node>;
+  getTotalNetworkTokens(): Promise<number>;
+  getCurrentPixelRate(): Promise<{ rate: number; totalNetworkTokens: number }>;
   getMessages(limit?: number): Promise<Message[]>;
   createMessage(msg: InsertMessage): Promise<Message>;
   createBridgeGame(game: InsertBridgeGame): Promise<BridgeGame>;
@@ -41,25 +43,42 @@ export class DatabaseStorage implements IStorage {
     return node;
   }
 
-  async updateNodeTokens(id: number, addedTokens: number): Promise<Node> {
+  async getTotalNetworkTokens(): Promise<number> {
+    const [result] = await db.select({ total: sql<number>`coalesce(sum(${nodes.totalTokens}), 0)::int` }).from(nodes);
+    return result.total;
+  }
+
+  async getCurrentPixelRate(): Promise<{ rate: number; totalNetworkTokens: number }> {
+    const totalNetworkTokens = await this.getTotalNetworkTokens();
+    return { rate: getPixelRate(totalNetworkTokens), totalNetworkTokens };
+  }
+
+  async updateNodeTokens(id: number, addedTokens: number): Promise<{ node: Node; currentRate: number; earnedCredits: number }> {
     const [node] = await db.select().from(nodes).where(eq(nodes.id, id));
     if (!node) throw new Error("Node not found");
+
     const newTotalTokens = node.totalTokens + addedTokens;
-    const oldCreditsFromTokens = Math.floor(node.totalTokens / TOKENS_PER_PIXEL);
-    const newCreditsFromTokens = Math.floor(newTotalTokens / TOKENS_PER_PIXEL);
-    const earnedCredits = newCreditsFromTokens - oldCreditsFromTokens;
+    const totalNetworkTokens = await this.getTotalNetworkTokens();
+    const currentRate = getPixelRate(totalNetworkTokens);
+
+    const accumulated = node.tokensSinceLastCredit + addedTokens;
+    const earnedCredits = Math.floor(accumulated / currentRate);
+    const remainder = accumulated % currentRate;
+
     if (earnedCredits > 0) {
-      console.log(`[pixel] Node ${node.name} earned ${earnedCredits} pixel credit(s)! Total: ${node.pixelCredits + earnedCredits} credits (${newTotalTokens} tokens)`);
+      console.log(`[pixel] Node ${node.name} earned ${earnedCredits} credit(s)! Rate: ${currentRate} tok/credit, Network: ${totalNetworkTokens + addedTokens} total tokens`);
     }
+
     const [updated] = await db.update(nodes)
       .set({
         totalTokens: newTotalTokens,
+        tokensSinceLastCredit: remainder,
         pixelCredits: node.pixelCredits + earnedCredits,
         lastSeen: new Date(),
       })
       .where(eq(nodes.id, id))
       .returning();
-    return updated;
+    return { node: updated, currentRate, earnedCredits };
   }
 
   async spendPixelCredit(nodeId: number): Promise<Node> {
