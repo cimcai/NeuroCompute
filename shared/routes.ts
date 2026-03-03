@@ -65,6 +65,7 @@ export const ws = {
     bridgeQuestion: z.object({ gameId: z.number(), sessionId: z.string(), question: z.string(), questionNumber: z.number(), category: z.string(), modelId: z.string() }),
     bridgeResult: z.object({ gameId: z.number(), correct: z.boolean(), message: z.string(), gameOver: z.boolean(), won: z.boolean(), score: z.object({ answered: z.number(), correct: z.number(), total: z.number() }) }),
     bridgeUpdate: z.object({ game: z.any() }),
+    pixelCommentRequest: z.object({ x: z.number(), y: z.number(), color: z.string(), wasEmpty: z.boolean(), creditsLeft: z.number() }),
   },
 };
 

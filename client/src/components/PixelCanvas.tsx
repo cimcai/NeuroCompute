@@ -17,9 +17,10 @@ const COLOR_PALETTE = [
 
 interface PixelCanvasProps {
   nodeId: number | null;
+  queuePixelComment?: (data: { x: number; y: number; color: string; wasEmpty: boolean; creditsLeft: number }) => void;
 }
 
-export function PixelCanvas({ nodeId }: PixelCanvasProps) {
+export function PixelCanvas({ nodeId, queuePixelComment }: PixelCanvasProps) {
   const [selectedColor, setSelectedColor] = useState(COLOR_PALETTE[0]);
   const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number } | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -46,8 +47,14 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
 
   const placeMutation = useMutation({
     mutationFn: async ({ x, y, color }: { x: number; y: number; color: string }) => {
+      const grid = canvasQuery.data?.grid;
+      const wasEmpty = !grid || !grid[y]?.[x] || grid[y][x] === "#000000";
       const res = await apiRequest("POST", "/api/canvas/place", { x, y, color, nodeId });
-      return res.json();
+      const data = await res.json();
+      if (queuePixelComment) {
+        queuePixelComment({ x, y, color, wasEmpty, creditsLeft: data.node?.pixelCredits ?? 0 });
+      }
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/canvas/credits", nodeId?.toString() ?? ""] });

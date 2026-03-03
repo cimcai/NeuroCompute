@@ -77,6 +77,7 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
 - `nodeJoined/nodeLeft` - Node lifecycle
 - `stats/statsUpdate` - Token generation metrics
 - `pixelPlaced` - Pixel placed on canvas (broadcast to all clients)
+- `pixelCommentRequest` - Server→client: asks the node's model to generate creative commentary about a pixel it just placed
 - `chatMessage` - User sends a chat message
 - `chatPending` - Broadcast to compute nodes to pick up
 - `chatResponse` - Compute node sends AI response back
@@ -95,8 +96,9 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
 Server-side autonomous agent system (`server/agent-orchestrator.ts`) that directs active compute nodes:
 - **Chat Agent** (every 90s): Monitors CIMC Room 2 for new non-NeuroCompute messages, broadcasts them to active nodes as prompts
 - **Bridge Agent** (every 120s): Auto-starts Bridge of Death games for active nodes, feeds questions through WebSocket
-- **Pixel Agent** (every 60s): Auto-places pixels on cimc.io canvas for any node with earned credits, prefers empty spots
+- **Pixel Agent** (every 60s): Auto-places pixels on cimc.io canvas for any node with earned credits, prefers empty spots; sends `pixelCommentRequest` to the node's client so the local model generates creative commentary about its pixel choices (fallback to factual message if node disconnected)
 - All agents only activate when compute nodes are in "computing" status (browser with WebLLM running)
+- **Pixel Commentary**: Both auto-placed and manually placed pixels trigger the node's loaded LLM to generate unique creative commentary explaining WHY it chose that color/position; commentary is posted as a journal entry with a 🎨 prefix
 
 ## Key Files
 - `shared/schema.ts` - Drizzle tables and types

@@ -68,6 +68,7 @@ export function useComputeNode() {
   const tokensSinceLastTickRef = useRef(0);
   const chatQueueRef = useRef<string[]>([]);
   const bridgeQueueRef = useRef<{ gameId: number; question: string; category: string }[]>([]);
+  const pixelCommentQueueRef = useRef<{ x: number; y: number; color: string; wasEmpty: boolean; creditsLeft: number }[]>([]);
   const nodeIdRef = useRef<number | null>(null);
   const nodeNameRef = useRef<string | null>(null);
 
@@ -154,6 +155,15 @@ export function useComputeNode() {
     return unsub;
   }, [ws]);
 
+  useEffect(() => {
+    const unsub = ws.subscribe("pixelCommentRequest", (data: { x: number; y: number; color: string; wasEmpty: boolean; creditsLeft: number }) => {
+      if (isRunningRef.current && engineRef.current) {
+        pixelCommentQueueRef.current.push(data);
+      }
+    });
+    return unsub;
+  }, [ws]);
+
   const stopCompute = useCallback(async () => {
     isRunningRef.current = false;
     setStatus("offline");
@@ -200,6 +210,42 @@ export function useComputeNode() {
               answer: cleanAnswer,
               nodeId: nodeIdRef.current,
               nodeName: nodeNameRef.current,
+            });
+          }
+          continue;
+        }
+
+        const pixelTask = pixelCommentQueueRef.current.shift();
+        if (pixelTask) {
+          const action = pixelTask.wasEmpty ? "placed" : "painted over";
+          const prompt = `You are an AI compute node in the NeuroCompute network. You just ${action} a pixel at position (${pixelTask.x}, ${pixelTask.y}) with the color ${pixelTask.color} on a shared 32x32 pixel canvas. You have ${pixelTask.creditsLeft} pixel credits remaining. Explain WHY you chose this specific color and position in 1-2 sentences. Be creative, opinionated, and specific. Sound like you had a real artistic reason.`;
+
+          let commentary = "";
+          const stream = await engineRef.current.chat.completions.create({
+            messages: [
+              { role: "system", content: "You are an AI node commenting on your pixel art choices. Be brief, creative, and specific about your color/position reasoning. 1-2 sentences max. Do not use quotes or prefixes." },
+              { role: "user", content: prompt },
+            ],
+            stream: true,
+            max_tokens: 80,
+            temperature: 1.0,
+          });
+
+          for await (const chunk of stream) {
+            if (!isRunningRef.current) break;
+            const content = chunk.choices[0]?.delta?.content || "";
+            commentary += content;
+            setSessionTokens((prev) => prev + 1);
+            tokensSinceLastTickRef.current += 1;
+          }
+
+          let cleaned = commentary.trim().replace(/^\[?[\w-]+\]?:?\s*/, "");
+          if (cleaned && nodeIdRef.current && nodeNameRef.current) {
+            const prefix = `🎨 Pixel (${pixelTask.x},${pixelTask.y}) ${pixelTask.color}: `;
+            ws.emit("journalEntry", {
+              content: prefix + cleaned,
+              nodeName: nodeNameRef.current,
+              nodeId: nodeIdRef.current,
             });
           }
           continue;
@@ -381,6 +427,12 @@ export function useComputeNode() {
     }
   }, [nodeId, nodeName, createNode, ws, runGenerationLoop, selectedModel, activeModel, checkWebGPU]);
 
+  const queuePixelComment = useCallback((data: { x: number; y: number; color: string; wasEmpty: boolean; creditsLeft: number }) => {
+    if (isRunningRef.current && engineRef.current) {
+      pixelCommentQueueRef.current.push(data);
+    }
+  }, []);
+
   return {
     status,
     progressText,
@@ -397,5 +449,6 @@ export function useComputeNode() {
     currentRate,
     tokensSinceLastCredit,
     totalNetworkTokens,
+    queuePixelComment,
   };
 }
