@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Paintbrush, Download, Shield, TrendingUp } from "lucide-react";
+import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Paintbrush, Download, Shield, TrendingUp, AlertTriangle } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function Dashboard() {
@@ -114,6 +114,15 @@ export default function Dashboard() {
             </div>
           )}
 
+          {node.status === "error" && node.progressText && (
+            <div className="w-full max-w-lg space-y-2">
+              <div className="flex items-start gap-2 text-sm text-destructive font-mono bg-destructive/10 py-3 px-4 rounded-lg border border-destructive/20" data-testid="text-error-message">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span className="break-words">{node.progressText}</span>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-wrap justify-center gap-4">
             {node.status === "offline" || node.status === "error" ? (
               <Button
@@ -123,7 +132,7 @@ export default function Dashboard() {
                 data-testid="button-start-compute"
               >
                 <Play className="mr-2 w-5 h-5" />
-                Start Compute Node
+                {node.status === "error" ? "Retry Compute Node" : "Start Compute Node"}
               </Button>
             ) : (
               <Button

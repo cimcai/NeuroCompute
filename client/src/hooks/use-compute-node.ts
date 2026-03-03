@@ -255,9 +255,33 @@ export function useComputeNode() {
     }
   }, [ws]);
 
+  const checkWebGPU = useCallback(async (): Promise<string | null> => {
+    if (!navigator.gpu) {
+      return "WebGPU is not supported in this browser. Please use Chrome or Edge on a desktop computer with a modern GPU.";
+    }
+    try {
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) {
+        return "No WebGPU adapter found. Your GPU may not be supported, or hardware acceleration may be disabled.";
+      }
+    } catch (e) {
+      return `WebGPU initialization failed: ${e instanceof Error ? e.message : "Unknown error"}`;
+    }
+    return null;
+  }, []);
+
   const startCompute = useCallback(async () => {
     try {
       setStatus("loading");
+      setProgressText("Checking WebGPU support...");
+
+      const gpuError = await checkWebGPU();
+      if (gpuError) {
+        setStatus("error");
+        setProgressText(gpuError);
+        return;
+      }
+
       setProgressText("Initializing engine...");
 
       let currentId = nodeId;
@@ -282,6 +306,7 @@ export function useComputeNode() {
         if (engineRef.current) {
           engineRef.current = null;
         }
+        setProgressText("Loading model weights... This may take a minute on first load.");
         engineRef.current = await CreateMLCEngine(selectedModel, {
           initProgressCallback: (progress) => {
             setProgressText(progress.text);
@@ -294,9 +319,18 @@ export function useComputeNode() {
     } catch (err) {
       console.error("Failed to start compute:", err);
       setStatus("error");
-      setProgressText(`Error: ${err instanceof Error ? err.message : "Unknown error"}`);
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      if (msg.toLowerCase().includes("webgpu") || msg.toLowerCase().includes("gpu")) {
+        setProgressText(`GPU Error: ${msg}. Try Chrome/Edge on desktop with hardware acceleration enabled.`);
+      } else if (msg.toLowerCase().includes("network") || msg.toLowerCase().includes("fetch")) {
+        setProgressText(`Network Error: ${msg}. Check your connection and try again.`);
+      } else if (msg.toLowerCase().includes("memory") || msg.toLowerCase().includes("oom")) {
+        setProgressText(`Out of Memory: ${msg}. Try closing other tabs or selecting a smaller model.`);
+      } else {
+        setProgressText(`Error: ${msg}`);
+      }
     }
-  }, [nodeId, nodeName, createNode, ws, runGenerationLoop, selectedModel, activeModel]);
+  }, [nodeId, nodeName, createNode, ws, runGenerationLoop, selectedModel, activeModel, checkWebGPU]);
 
   return {
     status,
