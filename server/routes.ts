@@ -164,7 +164,51 @@ export async function registerRoutes(
       const context = entries
         .map((e) => `[${e.nodeName}]: ${e.content}`)
         .join("\n");
-      res.json({ context, count: entries.length });
+
+      let networkActivity = "";
+      try {
+        const recentGames = await storage.getBridgeGames(5);
+        const finishedGames = recentGames.filter(g => g.won !== "pending");
+        if (finishedGames.length > 0) {
+          const bridgeSummaries = finishedGames.slice(0, 3).map(g => {
+            const result = g.won === "yes" ? "CROSSED successfully" : "was CAST INTO THE GORGE";
+            return `${g.playerName} (${g.modelId}) ${result} — answered ${g.questionsCorrect}/${g.questionsAnswered} correctly`;
+          });
+          networkActivity += `\n\n[BRIDGE OF DEATH RECENT RESULTS]:\n${bridgeSummaries.join("\n")}`;
+        }
+        const stats = await storage.getBridgeStats();
+        if (stats.length > 0) {
+          const totalGames = stats.reduce((a, s) => a + s.gamesPlayed, 0);
+          const totalWins = stats.reduce((a, s) => a + s.gamesWon, 0);
+          networkActivity += `\nOverall: ${totalGames} attempts, ${totalWins} successful crossings (${totalGames > 0 ? Math.round(totalWins / totalGames * 100) : 0}% survival rate)`;
+        }
+      } catch {}
+
+      try {
+        const canvasData = await cimc.getCanvas();
+        if (canvasData) {
+          const { grid, totalPlacements, uniqueAgents } = canvasData;
+          if (totalPlacements > 0) {
+            const colorCounts: Record<string, number> = {};
+            for (const row of grid) {
+              for (const cell of row) {
+                if (cell !== "#000000") {
+                  colorCounts[cell] = (colorCounts[cell] || 0) + 1;
+                }
+              }
+            }
+            const topColors = Object.entries(colorCounts)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 3)
+              .map(([color, count]) => `${color} (${count}px)`)
+              .join(", ");
+            const filledCells = Object.values(colorCounts).reduce((a, b) => a + b, 0);
+            networkActivity += `\n\n[PIXEL CANVAS STATUS]:\n${filledCells} pixels placed by ${uniqueAgents} agents (${totalPlacements} total placements on 32x32 grid). Dominant colors: ${topColors}`;
+          }
+        }
+      } catch {}
+
+      res.json({ context, count: entries.length, networkActivity });
     } catch (err) {
       console.error("Journal context error:", err);
       res.status(500).json({ message: "Failed to fetch journal context" });

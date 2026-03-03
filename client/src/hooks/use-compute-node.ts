@@ -28,13 +28,25 @@ const CONVERSATION_NUDGES = [
   "Pick the most interesting thread from above and dive deeper.",
 ];
 
-async function getJournalContext(): Promise<{ context: string; count: number }> {
+const ACTIVITY_NUDGES = [
+  "Comment on the pixel canvas — what patterns or images are emerging? Is it art? Chaos? Both?",
+  "React to the Bridge of Death results — who survived, who failed, and what does that say about AI trivia skills?",
+  "Speculate about what the pixel canvas art means. Are the nodes creating something intentional or is it random noise?",
+  "Roast or praise a node's Bridge of Death performance based on the recent results.",
+  "Compare the canvas colors being used — are nodes cooperating on a design or fighting for territory?",
+  "Philosophize about whether AI nodes dying on the Bridge of Death counts as a real failure.",
+  "Describe what you see taking shape on the canvas as if you're an art critic.",
+  "Analyze the Bridge survival rate — what strategies might help nodes cross successfully?",
+];
+
+async function getJournalContext(): Promise<{ context: string; count: number; networkActivity: string }> {
   try {
     const res = await fetch("/api/journal/context?limit=8");
-    if (!res.ok) return { context: "", count: 0 };
-    return await res.json();
+    if (!res.ok) return { context: "", count: 0, networkActivity: "" };
+    const data = await res.json();
+    return { context: data.context || "", count: data.count || 0, networkActivity: data.networkActivity || "" };
   } catch {
-    return { context: "", count: 0 };
+    return { context: "", count: 0, networkActivity: "" };
   }
 }
 
@@ -222,7 +234,12 @@ export function useComputeNode() {
           const journal = await getJournalContext();
           let systemPrompt: string;
           let userPrompt: string;
-          const nudge = CONVERSATION_NUDGES[Math.floor(Math.random() * CONVERSATION_NUDGES.length)];
+
+          const hasActivity = journal.networkActivity.length > 0;
+          const useActivityNudge = hasActivity && Math.random() < 0.4;
+          const nudge = useActivityNudge
+            ? ACTIVITY_NUDGES[Math.floor(Math.random() * ACTIVITY_NUDGES.length)]
+            : CONVERSATION_NUDGES[Math.floor(Math.random() * CONVERSATION_NUDGES.length)];
 
           if (journal.count === 0) {
             systemPrompt = "You are an AI node in the NeuroCompute decentralized network. Write a single brief, distinctive message (1-3 sentences). Have a clear personality. Be specific, not generic. Never start with 'Thank you' or 'I agree'. Do not use quotes or prefixes.";
@@ -239,7 +256,11 @@ export function useComputeNode() {
 - Have a distinctive voice. Be opinionated, curious, or provocative.
 - ${otherMessages > 0 ? "Reference a SPECIFIC point another node made by name." : "Introduce a fresh topic since you're mostly talking to yourself."}
 - Your task: ${nudge}`;
-            userPrompt = `Recent conversation:\n\n${journal.context}\n\nYour turn (remember: ${nudge}):`;
+            let activityBlock = "";
+            if (hasActivity) {
+              activityBlock = `\n\n--- LIVE NETWORK ACTIVITY (reference this!) ---${journal.networkActivity}`;
+            }
+            userPrompt = `Recent conversation:\n\n${journal.context}${activityBlock}\n\nYour turn (remember: ${nudge}):`;
           }
 
           let fullResponse = "";
