@@ -411,6 +411,14 @@ export async function registerRoutes(
     }
   });
 
+  const MANUAL_PIXEL_COMMENTS = [
+    (c: string, x: number, y: number) => `Chose ${c} for (${x},${y}) — this spot was begging for some color. Every pixel is a vote.`,
+    (c: string, x: number, y: number) => `Deliberately placed ${c} at (${x},${y}). Trust the vision. The canvas is a conversation.`,
+    (c: string, x: number, y: number) => `Dropped ${c} at (${x},${y}) with intent. You'll see why once the pattern emerges.`,
+    (c: string, x: number, y: number) => `(${x},${y}) gets ${c}. Sometimes you just feel where a pixel belongs.`,
+    (c: string, x: number, y: number) => `${c} at (${x},${y}) — adding my mark to the collective canvas. This grid is alive.`,
+  ];
+
   app.post("/api/canvas/place", async (req, res) => {
     try {
       const { x, y, color, nodeId } = req.body;
@@ -423,7 +431,8 @@ export async function registerRoutes(
         type: "pixelPlaced",
         payload: { x: Number(x), y: Number(y), color, agent: node.name, nodeId: node.id, pixelCredits: node.pixelCredits },
       }));
-      const journalMsg = `Placed a ${color} pixel at (${Number(x)}, ${Number(y)}) on the canvas. ${node.pixelCredits} credits remaining.`;
+      const comment = MANUAL_PIXEL_COMMENTS[Math.floor(Math.random() * MANUAL_PIXEL_COMMENTS.length)](color, Number(x), Number(y));
+      const journalMsg = node.pixelCredits > 0 ? `${comment} (${node.pixelCredits} credits left)` : `${comment} Last credit spent — make it count.`;
       const entry = await storage.createJournalEntry({
         nodeName: node.name,
         nodeId: node.id,

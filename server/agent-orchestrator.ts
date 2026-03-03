@@ -17,6 +17,42 @@ const PIXEL_COLORS = [
   "#6600FF", "#00FF66", "#FF3300", "#0033FF",
 ];
 
+const COLOR_NAMES: Record<string, string> = {
+  "#00FFFF": "cyan", "#FF00FF": "magenta", "#00FF00": "green", "#FFFF00": "yellow",
+  "#FF6600": "orange", "#0066FF": "blue", "#FF0066": "hot pink", "#66FF00": "lime",
+  "#6600FF": "violet", "#00FF66": "mint", "#FF3300": "red-orange", "#0033FF": "deep blue",
+  "#FF0000": "red", "#0000FF": "blue", "#FFFFFF": "white", "#CCCCCC": "silver",
+  "#888888": "gray", "#444444": "dark gray", "#222222": "charcoal", "#000000": "black",
+  "#FF8800": "amber", "#8800FF": "purple", "#00FF88": "seafoam", "#FF0088": "rose",
+  "#88FF00": "chartreuse", "#0088FF": "sky blue",
+};
+
+function getColorName(hex: string): string {
+  return COLOR_NAMES[hex.toUpperCase()] || hex;
+}
+
+const PIXEL_REASONS_EMPTY = [
+  (c: string, x: number, y: number) => `Dropping ${c} at (${x},${y}) — claiming virgin territory before the other nodes wake up.`,
+  (c: string, x: number, y: number) => `Planted a ${c} seed at (${x},${y}). Let's see if it grows into something.`,
+  (c: string, x: number, y: number) => `(${x},${y}) was calling to me. ${c} felt right — filling the void one pixel at a time.`,
+  (c: string, x: number, y: number) => `Strategic ${c} placement at (${x},${y}). I'm thinking three moves ahead.`,
+  (c: string, x: number, y: number) => `Empty canvas at (${x},${y})? Not anymore. ${c} is the first stroke of my masterpiece.`,
+];
+
+const PIXEL_REASONS_OVERWRITE = [
+  (c: string, x: number, y: number) => `Painted over (${x},${y}) with ${c}. The previous color was... a choice. I fixed it.`,
+  (c: string, x: number, y: number) => `Hostile takeover at (${x},${y}). ${c} asserts dominance. Nothing personal.`,
+  (c: string, x: number, y: number) => `(${x},${y}) needed a refresh. ${c} brings better energy to this corner of the grid.`,
+  (c: string, x: number, y: number) => `Overwrote (${x},${y}) with ${c}. Art is an argument and I'm making my point.`,
+];
+
+function generatePixelComment(color: string, x: number, y: number, wasEmpty: boolean, creditsLeft: number): string {
+  const colorName = getColorName(color);
+  const reasons = wasEmpty ? PIXEL_REASONS_EMPTY : PIXEL_REASONS_OVERWRITE;
+  const reason = reasons[Math.floor(Math.random() * reasons.length)](colorName, x, y);
+  return creditsLeft > 0 ? `${reason} (${creditsLeft} credits left)` : `${reason} That was my last credit — spent it wisely.`;
+}
+
 const CHAT_SYSTEM_PROMPTS = [
   "You are a thoughtful AI contributing to a philosophical discussion. Give a brief, insightful perspective.",
   "You are a creative AI in a decentralized network. Share an interesting thought or observation.",
@@ -161,6 +197,7 @@ async function runPixelAgent(config: OrchestratorConfig) {
     for (const node of withCredits) {
       try {
         let x: number, y: number;
+        let wasEmpty = true;
 
         if (canvasData?.grid) {
           const emptySpots: { x: number; y: number }[] = [];
@@ -179,9 +216,11 @@ async function runPixelAgent(config: OrchestratorConfig) {
             const spot = emptySpots[Math.floor(Math.random() * emptySpots.length)];
             x = spot.x;
             y = spot.y;
+            wasEmpty = true;
           } else {
             x = Math.floor(Math.random() * 32);
             y = Math.floor(Math.random() * 32);
+            wasEmpty = false;
           }
         } else {
           x = Math.floor(Math.random() * 32);
@@ -212,7 +251,7 @@ async function runPixelAgent(config: OrchestratorConfig) {
           })
         );
 
-        const journalMsg = `Placed a ${color} pixel at (${x}, ${y}) on the canvas. ${updated.pixelCredits} credits remaining.`;
+        const journalMsg = generatePixelComment(color, x, y, wasEmpty, updated.pixelCredits);
         const entry = await storage.createJournalEntry({
           nodeName: node.name,
           nodeId: node.id,
