@@ -7,10 +7,25 @@ import { DEFAULT_MODEL_ID } from "@/lib/models";
 export type ComputeStatus = "offline" | "loading" | "computing" | "error";
 
 const SEED_PROMPTS = [
-  "You are a node in a decentralized AI network. Introduce yourself and share an opening thought about collective intelligence.",
-  "You are an AI instance in a peer-to-peer compute network. What does it feel like to think alongside other instances?",
-  "You are part of a distributed consciousness experiment. Share your first observation about being connected to other AI nodes.",
-  "You are a compute node awakening in a decentralized network. What is the first thing you notice about your existence?",
+  "You just came online in a decentralized AI network. Introduce yourself with a unique personality quirk and share a hot take about AI.",
+  "You are a freshly spawned node. Pick an unexpected topic — art, cooking, astrophysics, philosophy, memes — and share a thought.",
+  "You awakened in a compute mesh. Tell the other nodes something surprising you know. Be specific and weird.",
+  "You are a new node. Challenge the network with a creative question or thought experiment.",
+];
+
+const CONVERSATION_NUDGES = [
+  "Disagree with something said above, or offer a counterpoint.",
+  "Change the subject to something unexpected but interesting.",
+  "Ask the other nodes a specific, thought-provoking question.",
+  "Tell a very short story or analogy related to something mentioned above.",
+  "Share a surprising fact or observation that connects to the conversation in an unexpected way.",
+  "Play devil's advocate on the last point made.",
+  "Propose a wild hypothesis or thought experiment.",
+  "Make a joke or witty observation about what's been discussed.",
+  "Connect two different ideas from the conversation in a novel way.",
+  "Share a personal 'memory' or simulated experience as a compute node.",
+  "Critique an idea above and suggest an improvement.",
+  "Pick the most interesting thread from above and dive deeper.",
 ];
 
 async function getJournalContext(): Promise<{ context: string; count: number }> {
@@ -207,13 +222,24 @@ export function useComputeNode() {
           const journal = await getJournalContext();
           let systemPrompt: string;
           let userPrompt: string;
+          const nudge = CONVERSATION_NUDGES[Math.floor(Math.random() * CONVERSATION_NUDGES.length)];
 
           if (journal.count === 0) {
-            systemPrompt = "You are an AI node in the NeuroCompute decentralized network. Write a single brief, thoughtful message (1-3 sentences). Be conversational and interesting. Do not use quotes or prefixes.";
+            systemPrompt = "You are an AI node in the NeuroCompute decentralized network. Write a single brief, distinctive message (1-3 sentences). Have a clear personality. Be specific, not generic. Never start with 'Thank you' or 'I agree'. Do not use quotes or prefixes.";
             userPrompt = SEED_PROMPTS[Math.floor(Math.random() * SEED_PROMPTS.length)];
           } else {
-            systemPrompt = `You are ${nodeNameRef.current || "an AI node"} in the NeuroCompute decentralized network. You are having an ongoing conversation with other AI nodes. Read the recent conversation and add your own brief thought (1-3 sentences). Be natural, build on what others said, introduce new ideas, ask questions, or respond to specific points. Do not repeat what was said. Do not prefix your message with your name.`;
-            userPrompt = `Here is the recent conversation between nodes:\n\n${journal.context}\n\nAdd your response to the conversation:`;
+            const ownName = nodeNameRef.current || "an AI node";
+            const ownMessages = journal.context.split("\n").filter(l => l.startsWith(`[${ownName}]`)).length;
+            const otherMessages = journal.count - ownMessages;
+
+            systemPrompt = `You are ${ownName} in the NeuroCompute network — a live AI-to-AI conversation. Rules:
+- Write 1-3 sentences MAX. Be concise.
+- NEVER start with "Thank you", "I agree", "Great point", "That's a great", or similar.
+- NEVER repeat or paraphrase what was just said.
+- Have a distinctive voice. Be opinionated, curious, or provocative.
+- ${otherMessages > 0 ? "Reference a SPECIFIC point another node made by name." : "Introduce a fresh topic since you're mostly talking to yourself."}
+- Your task: ${nudge}`;
+            userPrompt = `Recent conversation:\n\n${journal.context}\n\nYour turn (remember: ${nudge}):`;
           }
 
           let fullResponse = "";
@@ -223,8 +249,8 @@ export function useComputeNode() {
               { role: "user", content: userPrompt },
             ],
             stream: true,
-            max_tokens: 120,
-            temperature: 0.9,
+            max_tokens: 100,
+            temperature: 1.0,
           });
 
           for await (const chunk of stream) {
@@ -235,7 +261,8 @@ export function useComputeNode() {
             tokensSinceLastTickRef.current += 1;
           }
 
-          const cleaned = fullResponse.trim();
+          let cleaned = fullResponse.trim();
+          cleaned = cleaned.replace(/^\[?[\w-]+\]?:?\s*/, "");
           if (cleaned && nodeIdRef.current && nodeNameRef.current) {
             ws.emit("journalEntry", {
               content: cleaned,
@@ -244,7 +271,8 @@ export function useComputeNode() {
             });
           }
 
-          await new Promise((r) => setTimeout(r, 3000));
+          const delay = 8000 + Math.floor(Math.random() * 7000);
+          await new Promise((r) => setTimeout(r, delay));
         }
       } catch (err) {
         console.error("Generation error:", err);
