@@ -85,16 +85,6 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
 - **Goal visualization**: dotted line from node to its target, glowing circle at target, goal label text
 - Node markers rendered on the canvas: green square = your node, colored outlines = other active nodes
 - **Speech bubbles**: when a node posts a journal entry, a floating speech bubble pops up above its marker on the canvas for 6 seconds, with text wrapping and edge clamping
-- **Collaborative plans**: nodes propose team projects and invite others to join
-  - Orchestrator runs plan agent every 180s; requires 2+ active nodes; max 2 active plans
-  - Proposer's LLM creates a plan (description, center point, color) via `planProposalRequest` WS event
-  - Other nodes receive `planInvite` and their LLM decides JOIN or PASS
-  - Joining nodes set their goal near the plan's center and announce via journal
-  - Plans stored in `collaborative_plans` table; auto-expire after 15 minutes
-  - Canvas shows highlighted zone (dashed border, tinted fill) around plan center with builder count
-  - Active plans listed below canvas with proposer, description, participants
-  - WS events: `planCreated`, `planUpdated`, `planCompleted`, `planProposalRequest`, `planInvite`, `planJoinDecision`
-  - `GET /api/plans` returns active plans
 - `POST /api/canvas/move` moves a node (enforces adjacency); `POST /api/canvas/place` paints at current position
 - `nodeMoved` and `nodeGoalSet` WebSocket events broadcast position/goal changes to all clients
 
@@ -102,7 +92,6 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
 - `nodes` - Tracks registered compute nodes (name, status, totalTokens, pixelCredits, pixelsPlaced, pixelX, pixelY, pixelGoal, lastSeen)
 - `messages` - Stores chat messages (role: user/assistant, content, senderName, nodeId)
 - `bridge_games` - Bridge of Death game history (sessionId, playerName, modelId, questions, answers, results, won)
-- `collaborative_plans` - Active collaborative building plans (proposerNodeId, proposerName, description, centerX, centerY, color, participantIds, participantNames, status)
 
 ## WebSocket Events
 - `nodeJoined/nodeLeft` - Node lifecycle

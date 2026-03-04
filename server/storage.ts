@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { nodes, messages, bridgeGames, collaborativePlans, journalEntries, getPixelRate, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type CollaborativePlan, type InsertCollaborativePlan, type JournalEntry, type InsertJournalEntry } from "@shared/schema";
-import { eq, desc, sql, sum, and } from "drizzle-orm";
+import { nodes, messages, bridgeGames, journalEntries, getPixelRate, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type JournalEntry, type InsertJournalEntry } from "@shared/schema";
+import { eq, desc, sql, sum } from "drizzle-orm";
 
 export interface IStorage {
   getNodes(): Promise<Node[]>;
@@ -24,10 +24,6 @@ export interface IStorage {
   markStaleNodesOffline(staleMinutes?: number): Promise<void>;
   getJournalEntries(limit?: number): Promise<JournalEntry[]>;
   createJournalEntry(entry: InsertJournalEntry): Promise<JournalEntry>;
-  getActivePlans(): Promise<CollaborativePlan[]>;
-  createPlan(plan: InsertCollaborativePlan): Promise<CollaborativePlan>;
-  joinPlan(planId: number, nodeId: number, nodeName: string): Promise<CollaborativePlan>;
-  completePlan(planId: number): Promise<CollaborativePlan>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -195,43 +191,6 @@ export class DatabaseStorage implements IStorage {
   async createJournalEntry(entry: InsertJournalEntry): Promise<JournalEntry> {
     const [created] = await db.insert(journalEntries).values(entry).returning();
     return created;
-  }
-
-  async getActivePlans(): Promise<CollaborativePlan[]> {
-    return await db.select().from(collaborativePlans).where(eq(collaborativePlans.status, "active")).orderBy(desc(collaborativePlans.createdAt));
-  }
-
-  async createPlan(plan: InsertCollaborativePlan): Promise<CollaborativePlan> {
-    const [created] = await db.insert(collaborativePlans).values(plan).returning();
-    return created;
-  }
-
-  async joinPlan(planId: number, nodeId: number, nodeName: string): Promise<CollaborativePlan> {
-    const [updated] = await db.update(collaborativePlans)
-      .set({
-        participantIds: sql`array_append(${collaborativePlans.participantIds}, ${nodeId})`,
-        participantNames: sql`array_append(${collaborativePlans.participantNames}, ${nodeName})`,
-      })
-      .where(and(
-        eq(collaborativePlans.id, planId),
-        eq(collaborativePlans.status, "active"),
-        sql`NOT (${nodeId} = ANY(${collaborativePlans.participantIds}))`
-      ))
-      .returning();
-    if (!updated) {
-      const [plan] = await db.select().from(collaborativePlans).where(eq(collaborativePlans.id, planId));
-      if (!plan) throw new Error("Plan not found");
-      return plan;
-    }
-    return updated;
-  }
-
-  async completePlan(planId: number): Promise<CollaborativePlan> {
-    const [updated] = await db.update(collaborativePlans)
-      .set({ status: "completed" })
-      .where(eq(collaborativePlans.id, planId))
-      .returning();
-    return updated;
   }
 }
 

@@ -67,25 +67,6 @@ export const insertBridgeGameSchema = createInsertSchema(bridgeGames).omit({ id:
 export type BridgeGame = typeof bridgeGames.$inferSelect;
 export type InsertBridgeGame = z.infer<typeof insertBridgeGameSchema>;
 
-export const collaborativePlans = pgTable("collaborative_plans", {
-  id: serial("id").primaryKey(),
-  proposerNodeId: integer("proposer_node_id").notNull(),
-  proposerName: text("proposer_name").notNull(),
-  description: text("description").notNull(),
-  centerX: integer("center_x").notNull(),
-  centerY: integer("center_y").notNull(),
-  color: text("color").notNull(),
-  participantIds: integer("participant_ids").array().default([]).notNull(),
-  participantNames: text("participant_names").array().default([]).notNull(),
-  status: text("status").default("active").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const insertCollaborativePlanSchema = createInsertSchema(collaborativePlans).omit({ id: true, createdAt: true });
-
-export type CollaborativePlan = typeof collaborativePlans.$inferSelect;
-export type InsertCollaborativePlan = z.infer<typeof insertCollaborativePlanSchema>;
-
 export const journalEntries = pgTable("journal_entries", {
   id: serial("id").primaryKey(),
   nodeName: text("node_name").notNull(),
