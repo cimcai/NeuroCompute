@@ -427,12 +427,6 @@ export function useComputeNode() {
     }
   }, [nodeId, nodeName, createNode, ws, runGenerationLoop, selectedModel, activeModel, checkWebGPU]);
 
-  const queuePixelComment = useCallback((data: { x: number; y: number; color: string; wasEmpty: boolean; creditsLeft: number }) => {
-    if (isRunningRef.current && engineRef.current) {
-      pixelCommentQueueRef.current.push(data);
-    }
-  }, []);
-
   return {
     status,
     progressText,
@@ -449,6 +443,5 @@ export function useComputeNode() {
     currentRate,
     tokensSinceLastCredit,
     totalNetworkTokens,
-    queuePixelComment,
   };
 }

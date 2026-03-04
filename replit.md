@@ -72,9 +72,10 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
 - Each node has a position (pixelX, pixelY) on the 32x32 grid, stored in the nodes table
 - New nodes spawn at the center (16, 16); returning nodes resume at their last known position
 - Nodes can only paint the pixel at their current position (no remote placement)
-- Movement: nodes move 1 cell at a time (8 directions including diagonal), via WASD/arrows, clicking adjacent cells, or agent orchestrator
+- **Fully automated**: no manual movement or painting controls; the agent orchestrator moves and paints for all nodes
 - Agent orchestrator moves nodes randomly each cycle then paints at the new position
 - Node markers rendered on the canvas: green square = your node, colored outlines = other active nodes
+- **Speech bubbles**: when a node posts a journal entry, a floating speech bubble pops up above its marker on the canvas for 6 seconds, with text wrapping and edge clamping
 - `POST /api/canvas/move` moves a node (enforces adjacency); `POST /api/canvas/place` paints at current position
 - `nodeMoved` WebSocket event broadcasts position changes to all clients
 

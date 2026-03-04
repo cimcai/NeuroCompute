@@ -330,7 +330,7 @@ export default function Dashboard() {
               <BridgeGame />
             </TabsContent>
             <TabsContent value="room4" className="mt-4">
-              <PixelCanvas nodeId={node.nodeId} queuePixelComment={node.queuePixelComment} />
+              <PixelCanvas nodeId={node.nodeId} />
             </TabsContent>
             <TabsContent value="room1" className="mt-4">
               <CimcFeed roomId={1} roomLabel="Main Conference Room" />
