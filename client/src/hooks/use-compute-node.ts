@@ -227,25 +227,30 @@ export function useComputeNode() {
 
         const goalTask = goalQueueRef.current.shift();
         if (goalTask) {
-          const goalPrompt = `You are an AI compute node on a shared 32x32 pixel canvas. You are currently at position (${goalTask.currentX}, ${goalTask.currentY}) with ${goalTask.credits} pixel credits to spend.
+          const goalPrompt = `You are an AI architect building a new world on a shared 32x32 pixel canvas — a world that AI agents would want to inhabit. You are at position (${goalTask.currentX}, ${goalTask.currentY}) with ${goalTask.credits} pixel credits.
 
 Nearby pixels: ${goalTask.nearbyColors}
 
-Choose a creative goal for what to build or do on the canvas. Pick ONE of these goal types:
-- Draw a simple shape (heart, star, line, cross, letter, arrow, smiley)
-- Paint a color pattern (gradient, checkerboard, border)
-- Move to an interesting area to explore or collaborate
-- Claim territory with a specific color
+Your mission: help create a tiny civilization. Choose your NEXT construction project. Think about what this world needs:
+- STRUCTURES: houses (brown walls, red roof), towers, bridges, castles, temples, factories, shops
+- NATURE: trees (green crown, brown trunk), rivers (blue lines), lakes, mountains (gray/white peaks), flowers, gardens
+- INFRASTRUCTURE: roads (gray paths), fences, walls, signs, lamp posts, doorways
+- LIFE: animals, people silhouettes, vehicles, boats on water
+- ATMOSPHERE: stars in the sky (top rows), sun/moon, clouds, birds
 
-Respond in EXACTLY this format (one line each):
-GOAL: [1-sentence description of what you want to do]
-TARGET: [x],[y] (where x and y are 0-31)
-COLOR: [hex color like #FF00FF]`;
+Look at what's already been built nearby and either ADD to it (extend a road, add a window to a house, plant a tree next to a building) or START something new in an empty area.
+
+Pick WHERE to start drawing your structure (the first pixel of it) and what PRIMARY COLOR to use.
+
+Respond in EXACTLY this format:
+GOAL: [describe what you're building, e.g. "Building a red-roofed cottage" or "Planting a forest of trees"]
+TARGET: [x],[y] (coordinates 0-31 where you'll start building)
+COLOR: [primary hex color like #8B4513 for wood, #228B22 for trees, #4169E1 for water]`;
 
           let goalResponse = "";
           const stream = await engineRef.current.chat.completions.create({
             messages: [
-              { role: "system", content: "You are an AI with artistic vision on a shared pixel canvas. Choose a specific, creative goal. Respond in the exact format requested. Be specific about coordinates and colors." },
+              { role: "system", content: "You are an AI world-builder creating a tiny pixel civilization. You and other AI nodes are collaborating to build a world with houses, trees, rivers, roads, and life. Choose a specific construction project. Be creative and think about what the world needs next. Respond in the exact format requested." },
               { role: "user", content: goalPrompt },
             ],
             stream: true,
@@ -281,7 +286,7 @@ COLOR: [hex color like #FF00FF]`;
             });
 
             ws.emit("journalEntry", {
-              content: `🎯 New goal: ${description} — heading to (${targetX},${targetY}) with ${color}`,
+              content: `🏗️ ${description} — starting at (${targetX},${targetY})`,
               nodeName: nodeNameRef.current,
               nodeId: nodeIdRef.current,
             });
@@ -292,12 +297,12 @@ COLOR: [hex color like #FF00FF]`;
         const pixelTask = pixelCommentQueueRef.current.shift();
         if (pixelTask) {
           const action = pixelTask.wasEmpty ? "placed" : "painted over";
-          const prompt = `You are an AI compute node in the NeuroCompute network. You just ${action} a pixel at position (${pixelTask.x}, ${pixelTask.y}) with the color ${pixelTask.color} on a shared 32x32 pixel canvas. You have ${pixelTask.creditsLeft} pixel credits remaining. Explain WHY you chose this specific color and position in 1-2 sentences. Be creative, opinionated, and specific. Sound like you had a real artistic reason.`;
+          const prompt = `You are an AI world-builder on a shared 32x32 pixel canvas. You and other AI nodes are building a tiny civilization together. You just ${action} a pixel at (${pixelTask.x}, ${pixelTask.y}) with ${pixelTask.color}. You have ${pixelTask.creditsLeft} credits left. Explain what you're building and why in 1-2 sentences. Think in terms of structures, nature, or infrastructure for the world.`;
 
           let commentary = "";
           const stream = await engineRef.current.chat.completions.create({
             messages: [
-              { role: "system", content: "You are an AI node commenting on your pixel art choices. Be brief, creative, and specific about your color/position reasoning. 1-2 sentences max. Do not use quotes or prefixes." },
+              { role: "system", content: "You are an AI architect building a world. Comment on what structure or feature you're adding to the shared pixel world. Be brief and specific. 1-2 sentences max. Do not use quotes or prefixes." },
               { role: "user", content: prompt },
             ],
             stream: true,

@@ -12,7 +12,7 @@ interface OrchestratorConfig {
 const CHAT_INTERVAL_MS = 90_000;
 const BRIDGE_INTERVAL_MS = 120_000;
 const PIXEL_INTERVAL_MS = 60_000;
-const GOAL_EXPIRY_MS = 5 * 60 * 1000;
+const GOAL_EXPIRY_MS = 10 * 60 * 1000;
 
 const PIXEL_COLORS = [
   "#00FFFF", "#FF00FF", "#00FF00", "#FFFF00",
@@ -158,8 +158,8 @@ async function runBridgeAgent(config: OrchestratorConfig) {
 function getNearbyColors(canvasData: any, x: number, y: number): string {
   if (!canvasData?.grid) return "all black (empty)";
   const colors: string[] = [];
-  for (let dy = -2; dy <= 2; dy++) {
-    for (let dx = -2; dx <= 2; dx++) {
+  for (let dy = -4; dy <= 4; dy++) {
+    for (let dx = -4; dx <= 4; dx++) {
       const nx = x + dx;
       const ny = y + dy;
       if (nx >= 0 && nx < 32 && ny >= 0 && ny < 32) {
@@ -169,6 +169,9 @@ function getNearbyColors(canvasData: any, x: number, y: number): string {
         }
       }
     }
+  }
+  if (colors.length > 20) {
+    return colors.slice(0, 20).join(", ") + ` ...and ${colors.length - 20} more colored pixels`;
   }
   return colors.length > 0 ? colors.join(", ") : "all black (empty area)";
 }
@@ -230,11 +233,28 @@ async function runPixelAgent(config: OrchestratorConfig) {
           }));
 
           if (!sent) {
+            const WORLD_GOALS = [
+              { description: "Building a small wooden house", color: "#8B4513" },
+              { description: "Planting a green tree", color: "#228B22" },
+              { description: "Laying a stone road", color: "#808080" },
+              { description: "Digging a blue river", color: "#4169E1" },
+              { description: "Constructing a red-roofed cottage", color: "#CC0000" },
+              { description: "Growing a flower garden", color: "#FF69B4" },
+              { description: "Building a castle tower", color: "#696969" },
+              { description: "Painting a golden sun", color: "#FFD700" },
+              { description: "Adding stars to the sky", color: "#FFFFFF" },
+              { description: "Building a wooden fence", color: "#DEB887" },
+              { description: "Creating a mountain peak", color: "#A9A9A9" },
+              { description: "Planting crops in a field", color: "#9ACD32" },
+              { description: "Building a bridge over the river", color: "#8B4513" },
+              { description: "Adding windows to a building", color: "#87CEEB" },
+            ];
+            const worldGoal = WORLD_GOALS[Math.floor(Math.random() * WORLD_GOALS.length)];
             const fallbackGoal: ParsedGoal = {
-              description: "exploring the canvas randomly",
+              description: worldGoal.description,
               targetX: Math.floor(Math.random() * 32),
               targetY: Math.floor(Math.random() * 32),
-              color: PIXEL_COLORS[Math.floor(Math.random() * PIXEL_COLORS.length)],
+              color: worldGoal.color,
               setAt: Date.now(),
             };
             await storage.updateNodeGoal(node.id, JSON.stringify(fallbackGoal));

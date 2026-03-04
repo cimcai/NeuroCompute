@@ -78,8 +78,9 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
   - LLM responds with structured goal: description, target position, preferred color
   - Goal announced as 🎯 journal entry (shows as speech bubble)
   - Goals stored in `pixelGoal` column (JSON: `{description, targetX, targetY, color, setAt}`)
-  - Goals auto-expire after 5 minutes; cleared when node reaches target
-  - Fallback random goal if node is offline
+  - Goals auto-expire after 10 minutes; cleared when node reaches target
+  - Fallback world-building themed goal if node is offline (houses, trees, rivers, roads, etc.)
+  - **World-building theme**: nodes collaboratively construct a pixel civilization; pixel comments and goals reference building structures/nature/infrastructure
 - **Goal-directed movement**: nodes with goals move toward target each cycle (shortest path); nodes without goals wander randomly
 - **Goal visualization**: dotted line from node to its target, glowing circle at target, goal label text
 - Node markers rendered on the canvas: green square = your node, colored outlines = other active nodes

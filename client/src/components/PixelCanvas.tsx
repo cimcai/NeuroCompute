@@ -464,9 +464,9 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
           <Info className="w-3 h-3 shrink-0" />
           <span>
             {!nodeId
-              ? `Start a compute node to join the grid. Rate: ${currentRate} tok/credit`
+              ? `Start a compute node to help build an AI world. Rate: ${currentRate} tok/credit`
               : credits > 0
-                ? `Your AI autonomously explores and paints. ${credits} credits ready.`
+                ? `Your AI is building a world. ${credits} credits ready for construction.`
                 : `${tokensToNextCredit} tokens to next credit (rate: ${currentRate} tok/credit)`}
           </span>
         </div>
@@ -490,8 +490,8 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
             <div className="absolute inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm">
               <div className="text-center space-y-2 px-4">
                 <Paintbrush className="w-8 h-8 text-primary mx-auto" />
-                <p className="text-sm font-medium">Start a compute node to join the grid</p>
-                <p className="text-xs text-muted-foreground">Your AI will spawn at the center and autonomously explore</p>
+                <p className="text-sm font-medium">Start a compute node to build the AI world</p>
+                <p className="text-xs text-muted-foreground">Your AI will spawn at the center and start constructing a civilization</p>
               </div>
             </div>
           )}
