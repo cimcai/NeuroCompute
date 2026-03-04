@@ -24,11 +24,12 @@ export const nodes = pgTable("nodes", {
   pixelsPlaced: integer("pixels_placed").default(0).notNull(),
   pixelX: integer("pixel_x").default(16).notNull(),
   pixelY: integer("pixel_y").default(16).notNull(),
+  pixelGoal: text("pixel_goal"),
   status: text("status").default("offline").notNull(),
   lastSeen: timestamp("last_seen").defaultNow().notNull(),
 });
 
-export const insertNodeSchema = createInsertSchema(nodes).omit({ id: true, totalTokens: true, tokensSinceLastCredit: true, pixelCredits: true, pixelsPlaced: true, pixelX: true, pixelY: true, lastSeen: true });
+export const insertNodeSchema = createInsertSchema(nodes).omit({ id: true, totalTokens: true, tokensSinceLastCredit: true, pixelCredits: true, pixelsPlaced: true, pixelX: true, pixelY: true, pixelGoal: true, lastSeen: true });
 
 export type Node = typeof nodes.$inferSelect;
 export type InsertNode = z.infer<typeof insertNodeSchema>;

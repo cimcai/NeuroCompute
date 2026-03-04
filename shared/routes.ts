@@ -53,6 +53,7 @@ export const ws = {
     chatResponse: z.object({ content: z.string(), nodeId: z.number(), nodeName: z.string() }),
     bridgeAnswer: z.object({ gameId: z.number(), answer: z.string(), nodeId: z.number(), nodeName: z.string() }),
     journalEntry: z.object({ content: z.string(), nodeName: z.string(), nodeId: z.number() }),
+    pixelGoalSet: z.object({ nodeId: z.number(), nodeName: z.string(), description: z.string(), targetX: z.number(), targetY: z.number(), color: z.string() }),
   },
   receive: {
     nodeJoined: z.object({ id: z.number(), name: z.string() }),
@@ -66,7 +67,10 @@ export const ws = {
     bridgeResult: z.object({ gameId: z.number(), correct: z.boolean(), message: z.string(), gameOver: z.boolean(), won: z.boolean(), score: z.object({ answered: z.number(), correct: z.number(), total: z.number() }) }),
     bridgeUpdate: z.object({ game: z.any() }),
     pixelCommentRequest: z.object({ x: z.number(), y: z.number(), color: z.string(), wasEmpty: z.boolean(), creditsLeft: z.number() }),
+    pixelGoalRequest: z.object({ nodeId: z.number(), currentX: z.number(), currentY: z.number(), credits: z.number(), nearbyColors: z.string() }),
     nodeMoved: z.object({ nodeId: z.number(), nodeName: z.string(), x: z.number(), y: z.number() }),
+    nodeGoalSet: z.object({ nodeId: z.number(), nodeName: z.string(), description: z.string(), targetX: z.number(), targetY: z.number(), color: z.string() }),
+    nodeGoalCleared: z.object({ nodeId: z.number() }),
   },
 };
 

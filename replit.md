@@ -73,14 +73,22 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
 - New nodes spawn at the center (16, 16); returning nodes resume at their last known position
 - Nodes can only paint the pixel at their current position (no remote placement)
 - **Fully automated**: no manual movement or painting controls; the agent orchestrator moves and paints for all nodes
-- Agent orchestrator moves nodes randomly each cycle then paints at the new position
+- **LLM-driven goals**: nodes set creative goals via their local LLM (draw shapes, claim territory, explore, etc.)
+  - Server sends `pixelGoalRequest` to client LLM with canvas context (position, credits, nearby colors)
+  - LLM responds with structured goal: description, target position, preferred color
+  - Goal announced as 🎯 journal entry (shows as speech bubble)
+  - Goals stored in `pixelGoal` column (JSON: `{description, targetX, targetY, color, setAt}`)
+  - Goals auto-expire after 5 minutes; cleared when node reaches target
+  - Fallback random goal if node is offline
+- **Goal-directed movement**: nodes with goals move toward target each cycle (shortest path); nodes without goals wander randomly
+- **Goal visualization**: dotted line from node to its target, glowing circle at target, goal label text
 - Node markers rendered on the canvas: green square = your node, colored outlines = other active nodes
 - **Speech bubbles**: when a node posts a journal entry, a floating speech bubble pops up above its marker on the canvas for 6 seconds, with text wrapping and edge clamping
 - `POST /api/canvas/move` moves a node (enforces adjacency); `POST /api/canvas/place` paints at current position
-- `nodeMoved` WebSocket event broadcasts position changes to all clients
+- `nodeMoved` and `nodeGoalSet` WebSocket events broadcast position/goal changes to all clients
 
 ## Data Model
-- `nodes` - Tracks registered compute nodes (name, status, totalTokens, pixelCredits, pixelsPlaced, pixelX, pixelY, lastSeen)
+- `nodes` - Tracks registered compute nodes (name, status, totalTokens, pixelCredits, pixelsPlaced, pixelX, pixelY, pixelGoal, lastSeen)
 - `messages` - Stores chat messages (role: user/assistant, content, senderName, nodeId)
 - `bridge_games` - Bridge of Death game history (sessionId, playerName, modelId, questions, answers, results, won)
 

@@ -658,6 +658,17 @@ export async function registerRoutes(
           } catch (err) {
             console.error("CIMC submit error (response):", err);
           }
+        } else if (message.type === "pixelGoalSet") {
+          const { nodeId: goalNodeId, nodeName: goalNodeName, description, targetX, targetY, color } = message.payload;
+          if (!goalNodeId || !description) return;
+          const goalData = JSON.stringify({ description, targetX, targetY, color, setAt: Date.now() });
+          await storage.updateNodeGoal(goalNodeId, goalData);
+          broadcastAll(
+            JSON.stringify({
+              type: "nodeGoalSet",
+              payload: { nodeId: goalNodeId, nodeName: goalNodeName || "Unknown", description, targetX, targetY, color },
+            })
+          );
         } else if (message.type === "journalEntry") {
           const { content, nodeName, nodeId: entryNodeId } = message.payload;
           if (!content || !nodeName) return;

@@ -22,6 +22,15 @@ interface SpeechBubble {
   timestamp: number;
 }
 
+interface NodeGoal {
+  nodeId: number;
+  nodeName: string;
+  description: string;
+  targetX: number;
+  targetY: number;
+  color: string;
+}
+
 interface PixelCanvasProps {
   nodeId: number | null;
 }
@@ -33,6 +42,7 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
   const [isPanning, setIsPanning] = useState(false);
   const [nodePositions, setNodePositions] = useState<Map<number, { x: number; y: number; name: string }>>(new Map());
   const [speechBubbles, setSpeechBubbles] = useState<SpeechBubble[]>([]);
+  const [nodeGoals, setNodeGoals] = useState<Map<number, NodeGoal>>(new Map());
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ws = useWebSocket();
@@ -53,20 +63,28 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
     refetchInterval: 15000,
   });
 
-  const nodesQuery = useQuery<{ id: number; name: string; pixelX: number; pixelY: number; status: string }[]>({
+  const nodesQuery = useQuery<{ id: number; name: string; pixelX: number; pixelY: number; pixelGoal: string | null; status: string }[]>({
     queryKey: ["/api/nodes"],
     refetchInterval: 10000,
   });
 
   useEffect(() => {
     if (nodesQuery.data) {
-      const map = new Map<number, { x: number; y: number; name: string }>();
+      const posMap = new Map<number, { x: number; y: number; name: string }>();
+      const goalMap = new Map<number, NodeGoal>();
       for (const n of nodesQuery.data) {
         if (n.status === "computing") {
-          map.set(n.id, { x: n.pixelX, y: n.pixelY, name: n.name });
+          posMap.set(n.id, { x: n.pixelX, y: n.pixelY, name: n.name });
+          if (n.pixelGoal) {
+            try {
+              const g = JSON.parse(n.pixelGoal);
+              goalMap.set(n.id, { nodeId: n.id, nodeName: n.name, description: g.description, targetX: g.targetX, targetY: g.targetY, color: g.color });
+            } catch {}
+          }
         }
       }
-      setNodePositions(map);
+      setNodePositions(posMap);
+      setNodeGoals(goalMap);
     }
   }, [nodesQuery.data]);
 
@@ -90,6 +108,29 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
       setSpeechBubbles(prev => {
         const filtered = prev.filter(b => b.nodeId !== data.nodeId);
         return [...filtered, { nodeId: data.nodeId!, text, timestamp: Date.now() }];
+      });
+    });
+    return unsub;
+  }, [ws]);
+
+  useEffect(() => {
+    const unsub = ws.subscribe("nodeGoalSet", (data: { nodeId: number; nodeName: string; description: string; targetX: number; targetY: number; color: string }) => {
+      setNodeGoals(prev => {
+        const next = new Map(prev);
+        next.set(data.nodeId, data);
+        return next;
+      });
+    });
+    return unsub;
+  }, [ws]);
+
+  useEffect(() => {
+    const unsub = ws.subscribe("nodeGoalCleared", (data: { nodeId: number }) => {
+      setNodeGoals(prev => {
+        if (!prev.has(data.nodeId)) return prev;
+        const next = new Map(prev);
+        next.delete(data.nodeId);
+        return next;
       });
     });
     return unsub;
@@ -158,6 +199,41 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
       ctx.lineTo(CANVAS_SIZE * CELL_SIZE, i * CELL_SIZE);
       ctx.stroke();
     }
+
+    nodeGoals.forEach((goal, gNodeId) => {
+      const nodePos = nodePositions.get(gNodeId) || (gNodeId === nodeId && myPos ? { x: myPos.x, y: myPos.y } : null);
+      if (!nodePos) return;
+
+      const fromX = nodePos.x * CELL_SIZE + CELL_SIZE / 2;
+      const fromY = nodePos.y * CELL_SIZE + CELL_SIZE / 2;
+      const toX = goal.targetX * CELL_SIZE + CELL_SIZE / 2;
+      const toY = goal.targetY * CELL_SIZE + CELL_SIZE / 2;
+
+      ctx.save();
+      ctx.strokeStyle = goal.color + "55";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(fromX, fromY);
+      ctx.lineTo(toX, toY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = goal.color + "44";
+      ctx.strokeStyle = goal.color + "88";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(toX, toY, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = goal.color;
+      ctx.font = "4px monospace";
+      ctx.textAlign = "center";
+      const goalLabel = goal.description.length > 20 ? goal.description.slice(0, 18) + ".." : goal.description;
+      ctx.fillText(goalLabel, toX, toY + 8);
+      ctx.restore();
+    });
 
     let markerIdx = 0;
     const allNodes = new Map(nodePositions);
@@ -280,7 +356,7 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
     }
 
     ctx.restore();
-  }, [canvasQuery.data, hoveredCell, zoom, pan, myPos, nodePositions, nodeId, speechBubbles]);
+  }, [canvasQuery.data, hoveredCell, zoom, pan, myPos, nodePositions, nodeId, speechBubbles, nodeGoals]);
 
   useEffect(() => {
     drawCanvas();

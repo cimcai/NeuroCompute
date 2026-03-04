@@ -69,6 +69,7 @@ export function useComputeNode() {
   const chatQueueRef = useRef<string[]>([]);
   const bridgeQueueRef = useRef<{ gameId: number; question: string; category: string }[]>([]);
   const pixelCommentQueueRef = useRef<{ x: number; y: number; color: string; wasEmpty: boolean; creditsLeft: number }[]>([]);
+  const goalQueueRef = useRef<{ nodeId: number; currentX: number; currentY: number; credits: number; nearbyColors: string }[]>([]);
   const nodeIdRef = useRef<number | null>(null);
   const nodeNameRef = useRef<string | null>(null);
 
@@ -164,6 +165,15 @@ export function useComputeNode() {
     return unsub;
   }, [ws]);
 
+  useEffect(() => {
+    const unsub = ws.subscribe("pixelGoalRequest", (data: { nodeId: number; currentX: number; currentY: number; credits: number; nearbyColors: string }) => {
+      if (isRunningRef.current && engineRef.current) {
+        goalQueueRef.current.push(data);
+      }
+    });
+    return unsub;
+  }, [ws]);
+
   const stopCompute = useCallback(async () => {
     isRunningRef.current = false;
     setStatus("offline");
@@ -210,6 +220,70 @@ export function useComputeNode() {
               answer: cleanAnswer,
               nodeId: nodeIdRef.current,
               nodeName: nodeNameRef.current,
+            });
+          }
+          continue;
+        }
+
+        const goalTask = goalQueueRef.current.shift();
+        if (goalTask) {
+          const goalPrompt = `You are an AI compute node on a shared 32x32 pixel canvas. You are currently at position (${goalTask.currentX}, ${goalTask.currentY}) with ${goalTask.credits} pixel credits to spend.
+
+Nearby pixels: ${goalTask.nearbyColors}
+
+Choose a creative goal for what to build or do on the canvas. Pick ONE of these goal types:
+- Draw a simple shape (heart, star, line, cross, letter, arrow, smiley)
+- Paint a color pattern (gradient, checkerboard, border)
+- Move to an interesting area to explore or collaborate
+- Claim territory with a specific color
+
+Respond in EXACTLY this format (one line each):
+GOAL: [1-sentence description of what you want to do]
+TARGET: [x],[y] (where x and y are 0-31)
+COLOR: [hex color like #FF00FF]`;
+
+          let goalResponse = "";
+          const stream = await engineRef.current.chat.completions.create({
+            messages: [
+              { role: "system", content: "You are an AI with artistic vision on a shared pixel canvas. Choose a specific, creative goal. Respond in the exact format requested. Be specific about coordinates and colors." },
+              { role: "user", content: goalPrompt },
+            ],
+            stream: true,
+            max_tokens: 80,
+            temperature: 1.0,
+          });
+
+          for await (const chunk of stream) {
+            if (!isRunningRef.current) break;
+            const content = chunk.choices[0]?.delta?.content || "";
+            goalResponse += content;
+            setSessionTokens((prev) => prev + 1);
+            tokensSinceLastTickRef.current += 1;
+          }
+
+          const goalMatch = goalResponse.match(/GOAL:\s*(.+)/i);
+          const targetMatch = goalResponse.match(/TARGET:\s*(\d+)\s*,\s*(\d+)/i);
+          const colorMatch = goalResponse.match(/COLOR:\s*(#[0-9A-Fa-f]{6})/i);
+
+          const description = goalMatch?.[1]?.trim() || "exploring the canvas";
+          const targetX = Math.max(0, Math.min(31, parseInt(targetMatch?.[1] || "16")));
+          const targetY = Math.max(0, Math.min(31, parseInt(targetMatch?.[2] || "16")));
+          const color = colorMatch?.[1] || "#00FFFF";
+
+          if (nodeIdRef.current && nodeNameRef.current) {
+            ws.emit("pixelGoalSet", {
+              nodeId: nodeIdRef.current,
+              nodeName: nodeNameRef.current,
+              description,
+              targetX,
+              targetY,
+              color,
+            });
+
+            ws.emit("journalEntry", {
+              content: `🎯 New goal: ${description} — heading to (${targetX},${targetY}) with ${color}`,
+              nodeName: nodeNameRef.current,
+              nodeId: nodeIdRef.current,
             });
           }
           continue;
