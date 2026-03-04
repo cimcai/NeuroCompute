@@ -8,6 +8,7 @@ export interface IStorage {
   createNode(node: InsertNode): Promise<Node>;
   updateNodeTokens(id: number, addedTokens: number): Promise<{ node: Node; currentRate: number; earnedCredits: number }>;
   updateNodeStatus(id: number, status: string): Promise<Node>;
+  moveNode(id: number, x: number, y: number): Promise<Node>;
   spendPixelCredit(nodeId: number): Promise<Node>;
   getTotalNetworkTokens(): Promise<number>;
   getCurrentPixelRate(): Promise<{ rate: number; totalNetworkTokens: number }>;
@@ -100,6 +101,17 @@ export class DatabaseStorage implements IStorage {
       .set({ status, lastSeen: new Date() })
       .where(eq(nodes.id, id))
       .returning();
+    return updated;
+  }
+
+  async moveNode(id: number, x: number, y: number): Promise<Node> {
+    const clampedX = Math.max(0, Math.min(31, x));
+    const clampedY = Math.max(0, Math.min(31, y));
+    const [updated] = await db.update(nodes)
+      .set({ pixelX: clampedX, pixelY: clampedY, lastSeen: new Date() })
+      .where(eq(nodes.id, id))
+      .returning();
+    if (!updated) throw new Error("Node not found");
     return updated;
   }
 

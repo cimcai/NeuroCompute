@@ -68,8 +68,18 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
 - Rate displayed in Dashboard stat card and PixelCanvas component
 - Pixels are placed live on cimc.io via `POST /api/canvas/place`; grid is 32x32 with `grid[y][x]` color strings
 
+## Node Spatial Position
+- Each node has a position (pixelX, pixelY) on the 32x32 grid, stored in the nodes table
+- New nodes spawn at the center (16, 16); returning nodes resume at their last known position
+- Nodes can only paint the pixel at their current position (no remote placement)
+- Movement: nodes move 1 cell at a time (8 directions including diagonal), via WASD/arrows, clicking adjacent cells, or agent orchestrator
+- Agent orchestrator moves nodes randomly each cycle then paints at the new position
+- Node markers rendered on the canvas: green square = your node, colored outlines = other active nodes
+- `POST /api/canvas/move` moves a node (enforces adjacency); `POST /api/canvas/place` paints at current position
+- `nodeMoved` WebSocket event broadcasts position changes to all clients
+
 ## Data Model
-- `nodes` - Tracks registered compute nodes (name, status, totalTokens, pixelCredits, pixelsPlaced, lastSeen)
+- `nodes` - Tracks registered compute nodes (name, status, totalTokens, pixelCredits, pixelsPlaced, pixelX, pixelY, lastSeen)
 - `messages` - Stores chat messages (role: user/assistant, content, senderName, nodeId)
 - `bridge_games` - Bridge of Death game history (sessionId, playerName, modelId, questions, answers, results, won)
 
@@ -78,6 +88,7 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
 - `stats/statsUpdate` - Token generation metrics
 - `pixelPlaced` - Pixel placed on canvas (broadcast to all clients)
 - `pixelCommentRequest` - Server→client: asks the node's model to generate creative commentary about a pixel it just placed
+- `nodeMoved` - Node changed position on the grid (broadcast to all clients)
 - `chatMessage` - User sends a chat message
 - `chatPending` - Broadcast to compute nodes to pick up
 - `chatResponse` - Compute node sends AI response back

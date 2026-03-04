@@ -413,15 +413,19 @@ export async function registerRoutes(
 
   app.post("/api/canvas/place", async (req, res) => {
     try {
-      const { x, y, color, nodeId } = req.body;
-      if (x === undefined || y === undefined || !color || !nodeId) {
-        return res.status(400).json({ message: "x, y, color, and nodeId are required" });
+      const { color, nodeId } = req.body;
+      if (!color || !nodeId) {
+        return res.status(400).json({ message: "color and nodeId are required" });
       }
+      const currentNode = await storage.getNode(Number(nodeId));
+      if (!currentNode) return res.status(404).json({ message: "Node not found" });
+      const x = currentNode.pixelX;
+      const y = currentNode.pixelY;
       const node = await storage.spendPixelCredit(Number(nodeId));
-      const result = await cimc.placePixel(Number(x), Number(y), color, `NeuroCompute-${node.name}`);
+      const result = await cimc.placePixel(x, y, color, `NeuroCompute-${node.name}`);
       broadcastAll(JSON.stringify({
         type: "pixelPlaced",
-        payload: { x: Number(x), y: Number(y), color, agent: node.name, nodeId: node.id, pixelCredits: node.pixelCredits },
+        payload: { x, y, color, agent: node.name, nodeId: node.id, pixelCredits: node.pixelCredits },
       }));
       res.json({ pixel: result, node });
     } catch (err: any) {
@@ -436,12 +440,42 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/canvas/move", async (req, res) => {
+    try {
+      const { nodeId, x, y } = req.body;
+      if (!nodeId || x === undefined || y === undefined) {
+        return res.status(400).json({ message: "nodeId, x, and y are required" });
+      }
+      const node = await storage.getNode(Number(nodeId));
+      if (!node) return res.status(404).json({ message: "Node not found" });
+      const nx = Number(x);
+      const ny = Number(y);
+      if (nx < 0 || nx > 31 || ny < 0 || ny > 31) {
+        return res.status(400).json({ message: "Position must be within the 32x32 grid" });
+      }
+      const dx = Math.abs(nx - node.pixelX);
+      const dy = Math.abs(ny - node.pixelY);
+      if (dx > 1 || dy > 1) {
+        return res.status(400).json({ message: "Can only move to adjacent cells (1 step)" });
+      }
+      const updated = await storage.moveNode(Number(nodeId), Number(x), Number(y));
+      broadcastAll(JSON.stringify({
+        type: "nodeMoved",
+        payload: { nodeId: updated.id, nodeName: updated.name, x: updated.pixelX, y: updated.pixelY },
+      }));
+      res.json({ node: updated });
+    } catch (err: any) {
+      console.error("Canvas move error:", err);
+      res.status(500).json({ message: "Failed to move node" });
+    }
+  });
+
   app.get("/api/canvas/credits/:nodeId", async (req, res) => {
     try {
       const node = await storage.getNode(Number(req.params.nodeId));
       if (!node) return res.status(404).json({ message: "Node not found" });
       const { rate } = await storage.getCurrentPixelRate();
-      res.json({ pixelCredits: node.pixelCredits, pixelsPlaced: node.pixelsPlaced, totalTokens: node.totalTokens, tokensSinceLastCredit: node.tokensSinceLastCredit, currentRate: rate });
+      res.json({ pixelCredits: node.pixelCredits, pixelsPlaced: node.pixelsPlaced, totalTokens: node.totalTokens, tokensSinceLastCredit: node.tokensSinceLastCredit, currentRate: rate, pixelX: node.pixelX, pixelY: node.pixelY });
     } catch (err) {
       console.error("Canvas credits error:", err);
       res.status(500).json({ message: "Failed to fetch credits" });

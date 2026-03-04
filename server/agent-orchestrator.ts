@@ -147,11 +147,16 @@ async function runBridgeAgent(config: OrchestratorConfig) {
   }
 }
 
+const DIRECTIONS = [
+  { dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }, { dx: 1, dy: 0 },
+  { dx: -1, dy: -1 }, { dx: 1, dy: -1 }, { dx: -1, dy: 1 }, { dx: 1, dy: 1 },
+];
+
 async function runPixelAgent(config: OrchestratorConfig) {
   try {
     const allNodes = await storage.getNodes();
-    const withCredits = allNodes.filter((n) => n.pixelCredits > 0);
-    if (withCredits.length === 0) return;
+    const activeNodes = allNodes.filter((n) => n.status === "computing");
+    if (activeNodes.length === 0) return;
 
     let canvasData: any;
     try {
@@ -160,39 +165,27 @@ async function runPixelAgent(config: OrchestratorConfig) {
       return;
     }
 
-    for (const node of withCredits) {
+    for (const node of activeNodes) {
       try {
-        let x: number, y: number;
-        let wasEmpty = true;
+        const dir = DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)];
+        const newX = Math.max(0, Math.min(31, node.pixelX + dir.dx));
+        const newY = Math.max(0, Math.min(31, node.pixelY + dir.dy));
 
-        if (canvasData?.grid) {
-          const emptySpots: { x: number; y: number }[] = [];
-          for (let row = 0; row < 32; row++) {
-            for (let col = 0; col < 32; col++) {
-              if (
-                canvasData.grid[row]?.[col] === "#000000" ||
-                !canvasData.grid[row]?.[col]
-              ) {
-                emptySpots.push({ x: col, y: row });
-              }
-            }
-          }
-
-          if (emptySpots.length > 0) {
-            const spot = emptySpots[Math.floor(Math.random() * emptySpots.length)];
-            x = spot.x;
-            y = spot.y;
-            wasEmpty = true;
-          } else {
-            x = Math.floor(Math.random() * 32);
-            y = Math.floor(Math.random() * 32);
-            wasEmpty = false;
-          }
-        } else {
-          x = Math.floor(Math.random() * 32);
-          y = Math.floor(Math.random() * 32);
+        if (newX !== node.pixelX || newY !== node.pixelY) {
+          await storage.moveNode(node.id, newX, newY);
+          config.broadcastAll(
+            JSON.stringify({
+              type: "nodeMoved",
+              payload: { nodeId: node.id, nodeName: node.name, x: newX, y: newY },
+            })
+          );
         }
 
+        if (node.pixelCredits < 1) continue;
+
+        const x = newX;
+        const y = newY;
+        const wasEmpty = !canvasData?.grid?.[y]?.[x] || canvasData.grid[y][x] === "#000000";
         const color = PIXEL_COLORS[Math.floor(Math.random() * PIXEL_COLORS.length)];
         const updated = await storage.spendPixelCredit(node.id);
         const agent = `NeuroCompute-${node.name}`;
@@ -200,7 +193,7 @@ async function runPixelAgent(config: OrchestratorConfig) {
         await cimc.placePixel(x, y, color, agent);
 
         console.log(
-          `[orchestrator] Pixel agent: ${node.name} placed ${color} at (${x},${y}) — ${updated.pixelCredits} credits left`
+          `[orchestrator] Pixel agent: ${node.name} moved to (${x},${y}), placed ${color} — ${updated.pixelCredits} credits left`
         );
 
         config.broadcastAll(
