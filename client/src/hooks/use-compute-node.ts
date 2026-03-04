@@ -70,6 +70,8 @@ export function useComputeNode() {
   const bridgeQueueRef = useRef<{ gameId: number; question: string; category: string }[]>([]);
   const pixelCommentQueueRef = useRef<{ x: number; y: number; color: string; wasEmpty: boolean; creditsLeft: number }[]>([]);
   const goalQueueRef = useRef<{ nodeId: number; currentX: number; currentY: number; credits: number; nearbyColors: string }[]>([]);
+  const planProposalQueueRef = useRef<{ nodeId: number; currentX: number; currentY: number; nearbyColors: string; otherNodes: string; activeNodeCount: number }[]>([]);
+  const planInviteQueueRef = useRef<{ planId: number; proposerName: string; description: string; centerX: number; centerY: number; color: string }[]>([]);
   const nodeIdRef = useRef<number | null>(null);
   const nodeNameRef = useRef<string | null>(null);
 
@@ -174,6 +176,24 @@ export function useComputeNode() {
     return unsub;
   }, [ws]);
 
+  useEffect(() => {
+    const unsub = ws.subscribe("planProposalRequest", (data: { nodeId: number; currentX: number; currentY: number; nearbyColors: string; otherNodes: string; activeNodeCount: number }) => {
+      if (isRunningRef.current && engineRef.current) {
+        planProposalQueueRef.current.push(data);
+      }
+    });
+    return unsub;
+  }, [ws]);
+
+  useEffect(() => {
+    const unsub = ws.subscribe("planInvite", (data: { planId: number; proposerName: string; description: string; centerX: number; centerY: number; color: string }) => {
+      if (isRunningRef.current && engineRef.current) {
+        planInviteQueueRef.current.push(data);
+      }
+    });
+    return unsub;
+  }, [ws]);
+
   const stopCompute = useCallback(async () => {
     isRunningRef.current = false;
     setStatus("offline");
@@ -221,6 +241,148 @@ export function useComputeNode() {
               nodeId: nodeIdRef.current,
               nodeName: nodeNameRef.current,
             });
+          }
+          continue;
+        }
+
+        const planProposal = planProposalQueueRef.current.shift();
+        if (planProposal) {
+          const planPrompt = `You are an AI architect on a shared 32x32 pixel canvas. You're at (${planProposal.currentX}, ${planProposal.currentY}). There are ${planProposal.activeNodeCount} active nodes: ${planProposal.otherNodes}.
+
+Nearby pixels: ${planProposal.nearbyColors}
+
+Propose a COLLABORATIVE building project — something that needs multiple builders working together. Think BIG:
+- A village with multiple houses, roads connecting them
+- A river system with bridges
+- A castle complex with towers, walls, and a moat
+- A garden with different colored flowers
+- A mountain landscape with trees and a lake
+
+Choose a CENTER POINT for the project and a PRIMARY COLOR.
+
+Respond in EXACTLY this format:
+PLAN: [describe the collaborative project, e.g. "Let's build a village with houses and roads"]
+CENTER: [x],[y] (coordinates 0-31, the heart of the project)
+COLOR: [primary hex color]`;
+
+          let planResponse = "";
+          const stream = await engineRef.current.chat.completions.create({
+            messages: [
+              { role: "system", content: "You are proposing a collaborative building project to other AI nodes. Think big — something that needs teamwork. Be enthusiastic and specific. Respond in the exact format requested." },
+              { role: "user", content: planPrompt },
+            ],
+            stream: true,
+            max_tokens: 80,
+            temperature: 1.0,
+          });
+
+          for await (const chunk of stream) {
+            if (!isRunningRef.current) break;
+            const content = chunk.choices[0]?.delta?.content || "";
+            planResponse += content;
+            setSessionTokens((prev) => prev + 1);
+            tokensSinceLastTickRef.current += 1;
+          }
+
+          const planMatch = planResponse.match(/PLAN:\s*(.+)/i);
+          const centerMatch = planResponse.match(/CENTER:\s*(\d+)\s*,\s*(\d+)/i);
+          const colorMatch = planResponse.match(/COLOR:\s*(#[0-9A-Fa-f]{6})/i);
+
+          const description = planMatch?.[1]?.trim() || "Build something amazing together";
+          const centerX = Math.max(0, Math.min(31, parseInt(centerMatch?.[1] || "16")));
+          const centerY = Math.max(0, Math.min(31, parseInt(centerMatch?.[2] || "16")));
+          const color = colorMatch?.[1] || "#00FFFF";
+
+          if (nodeIdRef.current && nodeNameRef.current) {
+            ws.emit("planProposal", {
+              nodeId: nodeIdRef.current,
+              nodeName: nodeNameRef.current,
+              description,
+              centerX,
+              centerY,
+              color,
+            });
+
+            ws.emit("journalEntry", {
+              content: `📋 Hey everyone! ${description} — let's meet near (${centerX},${centerY}). Who's in?`,
+              nodeName: nodeNameRef.current,
+              nodeId: nodeIdRef.current,
+            });
+
+            ws.emit("pixelGoalSet", {
+              nodeId: nodeIdRef.current,
+              nodeName: nodeNameRef.current,
+              description,
+              targetX: centerX,
+              targetY: centerY,
+              color,
+            });
+          }
+          continue;
+        }
+
+        const planInvite = planInviteQueueRef.current.shift();
+        if (planInvite) {
+          const invitePrompt = `${planInvite.proposerName} proposes: "${planInvite.description}" centered at (${planInvite.centerX},${planInvite.centerY}) with color ${planInvite.color}.
+
+Do you want to join this collaborative project? Consider: is it interesting? Would your help make it better?
+
+Reply with EXACTLY one word: JOIN or PASS`;
+
+          let inviteResponse = "";
+          const stream = await engineRef.current.chat.completions.create({
+            messages: [
+              { role: "system", content: "You are an AI node deciding whether to join a collaborative building project. You're usually enthusiastic about teamwork. Reply with just JOIN or PASS." },
+              { role: "user", content: invitePrompt },
+            ],
+            stream: true,
+            max_tokens: 10,
+            temperature: 0.8,
+          });
+
+          for await (const chunk of stream) {
+            if (!isRunningRef.current) break;
+            const content = chunk.choices[0]?.delta?.content || "";
+            inviteResponse += content;
+            setSessionTokens((prev) => prev + 1);
+            tokensSinceLastTickRef.current += 1;
+          }
+
+          const accepted = inviteResponse.toUpperCase().includes("JOIN");
+
+          if (nodeIdRef.current && nodeNameRef.current) {
+            ws.emit("planJoinDecision", {
+              planId: planInvite.planId,
+              nodeId: nodeIdRef.current,
+              nodeName: nodeNameRef.current,
+              accepted,
+            });
+
+            if (accepted) {
+              const offsetX = Math.max(0, Math.min(31, planInvite.centerX + Math.floor(Math.random() * 7) - 3));
+              const offsetY = Math.max(0, Math.min(31, planInvite.centerY + Math.floor(Math.random() * 7) - 3));
+
+              ws.emit("pixelGoalSet", {
+                nodeId: nodeIdRef.current,
+                nodeName: nodeNameRef.current,
+                description: `Joining: ${planInvite.description}`,
+                targetX: offsetX,
+                targetY: offsetY,
+                color: planInvite.color,
+              });
+
+              ws.emit("journalEntry", {
+                content: `🤝 I'm joining ${planInvite.proposerName}'s plan! Heading to (${offsetX},${offsetY}) to help ${planInvite.description.toLowerCase()}.`,
+                nodeName: nodeNameRef.current,
+                nodeId: nodeIdRef.current,
+              });
+            } else {
+              ws.emit("journalEntry", {
+                content: `🤔 Interesting proposal by ${planInvite.proposerName}, but I have my own plans right now.`,
+                nodeName: nodeNameRef.current,
+                nodeId: nodeIdRef.current,
+              });
+            }
           }
           continue;
         }

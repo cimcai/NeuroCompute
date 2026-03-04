@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { Grid3X3, Coins, Paintbrush, Minus, Plus, RotateCcw, MapPin, Info } from "lucide-react";
+import { Grid3X3, Coins, Paintbrush, Minus, Plus, RotateCcw, MapPin, Info, Users } from "lucide-react";
 
 const CANVAS_SIZE = 32;
 const CELL_SIZE = 16;
@@ -31,6 +31,16 @@ interface NodeGoal {
   color: string;
 }
 
+interface ActivePlan {
+  id: number;
+  proposerName: string;
+  description: string;
+  centerX: number;
+  centerY: number;
+  color: string;
+  participantNames: string[];
+}
+
 interface PixelCanvasProps {
   nodeId: number | null;
 }
@@ -43,6 +53,7 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
   const [nodePositions, setNodePositions] = useState<Map<number, { x: number; y: number; name: string }>>(new Map());
   const [speechBubbles, setSpeechBubbles] = useState<SpeechBubble[]>([]);
   const [nodeGoals, setNodeGoals] = useState<Map<number, NodeGoal>>(new Map());
+  const [activePlans, setActivePlans] = useState<ActivePlan[]>([]);
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ws = useWebSocket();
@@ -66,6 +77,11 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
   const nodesQuery = useQuery<{ id: number; name: string; pixelX: number; pixelY: number; pixelGoal: string | null; status: string }[]>({
     queryKey: ["/api/nodes"],
     refetchInterval: 10000,
+  });
+
+  const plansQuery = useQuery<ActivePlan[]>({
+    queryKey: ["/api/plans"],
+    refetchInterval: 15000,
   });
 
   useEffect(() => {
@@ -122,6 +138,28 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
       });
     });
     return unsub;
+  }, [ws]);
+
+  useEffect(() => {
+    if (plansQuery.data) {
+      setActivePlans(plansQuery.data);
+    }
+  }, [plansQuery.data]);
+
+  useEffect(() => {
+    const unsub1 = ws.subscribe("planCreated", (data: ActivePlan) => {
+      setActivePlans(prev => {
+        if (prev.some(p => p.id === data.id)) return prev.map(p => p.id === data.id ? data : p);
+        return [...prev, data];
+      });
+    });
+    const unsub2 = ws.subscribe("planUpdated", (data: ActivePlan) => {
+      setActivePlans(prev => prev.map(p => p.id === data.id ? data : p));
+    });
+    const unsub3 = ws.subscribe("planCompleted", (data: { planId: number }) => {
+      setActivePlans(prev => prev.filter(p => p.id !== data.planId));
+    });
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, [ws]);
 
   useEffect(() => {
@@ -199,6 +237,33 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
       ctx.lineTo(CANVAS_SIZE * CELL_SIZE, i * CELL_SIZE);
       ctx.stroke();
     }
+
+    activePlans.forEach((plan) => {
+      const zoneRadius = 4;
+      const zoneX = Math.max(0, plan.centerX - zoneRadius) * CELL_SIZE;
+      const zoneY = Math.max(0, plan.centerY - zoneRadius) * CELL_SIZE;
+      const zoneW = (Math.min(31, plan.centerX + zoneRadius) - Math.max(0, plan.centerX - zoneRadius) + 1) * CELL_SIZE;
+      const zoneH = (Math.min(31, plan.centerY + zoneRadius) - Math.max(0, plan.centerY - zoneRadius) + 1) * CELL_SIZE;
+
+      ctx.save();
+      ctx.fillStyle = plan.color + "11";
+      ctx.fillRect(zoneX, zoneY, zoneW, zoneH);
+      ctx.strokeStyle = plan.color + "44";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 2]);
+      ctx.strokeRect(zoneX, zoneY, zoneW, zoneH);
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = plan.color + "CC";
+      ctx.font = "bold 5px monospace";
+      ctx.textAlign = "center";
+      const planLabel = plan.description.length > 30 ? plan.description.slice(0, 28) + ".." : plan.description;
+      ctx.fillText(`📋 ${planLabel}`, zoneX + zoneW / 2, zoneY - 3);
+      ctx.font = "4px monospace";
+      ctx.fillStyle = plan.color + "99";
+      ctx.fillText(`${plan.participantNames.length} builder${plan.participantNames.length !== 1 ? "s" : ""}`, zoneX + zoneW / 2, zoneY - 8 + zoneH + 10);
+      ctx.restore();
+    });
 
     nodeGoals.forEach((goal, gNodeId) => {
       const nodePos = nodePositions.get(gNodeId) || (gNodeId === nodeId && myPos ? { x: myPos.x, y: myPos.y } : null);
@@ -356,7 +421,7 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
     }
 
     ctx.restore();
-  }, [canvasQuery.data, hoveredCell, zoom, pan, myPos, nodePositions, nodeId, speechBubbles, nodeGoals]);
+  }, [canvasQuery.data, hoveredCell, zoom, pan, myPos, nodePositions, nodeId, speechBubbles, nodeGoals, activePlans]);
 
   useEffect(() => {
     drawCanvas();
@@ -496,6 +561,27 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
             </div>
           )}
         </div>
+
+        {activePlans.length > 0 && (
+          <div className="space-y-2" data-testid="active-plans">
+            {activePlans.map(plan => (
+              <div key={plan.id} className="flex items-start gap-2 bg-secondary/30 rounded-lg px-3 py-2 border border-white/5">
+                <Users className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: plan.color }} />
+                <div className="min-w-0">
+                  <div className="text-xs font-medium truncate" data-testid={`text-plan-description-${plan.id}`}>
+                    <span className="text-primary">{plan.proposerName}</span>
+                    <span className="text-muted-foreground"> proposed: </span>
+                    {plan.description}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5" data-testid={`text-plan-participants-${plan.id}`}>
+                    {plan.participantNames.length} builder{plan.participantNames.length !== 1 ? "s" : ""}: {plan.participantNames.join(", ")}
+                    <span className="ml-2 text-muted-foreground/60">near ({plan.centerX},{plan.centerY})</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>{totalPlacements} pixels placed by {uniqueAgents} agent{uniqueAgents !== 1 ? "s" : ""}</span>

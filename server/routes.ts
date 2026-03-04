@@ -146,6 +146,16 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/plans", async (req, res) => {
+    try {
+      const plans = await storage.getActivePlans();
+      res.json(plans);
+    } catch (err) {
+      console.error("Plans fetch error:", err);
+      res.status(500).json({ message: "Failed to fetch plans" });
+    }
+  });
+
   app.get("/api/journal", async (req, res) => {
     try {
       const limit = Math.min(Number(req.query.limit) || 100, 500);
@@ -669,6 +679,53 @@ export async function registerRoutes(
               payload: { nodeId: goalNodeId, nodeName: goalNodeName || "Unknown", description, targetX, targetY, color },
             })
           );
+        } else if (message.type === "planProposal") {
+          const { nodeId: planNodeId, nodeName: planNodeName, description, centerX, centerY, color } = message.payload;
+          if (!planNodeId || !description) return;
+          const existingPlans = await storage.getActivePlans();
+          if (existingPlans.length >= 2) return;
+          const plan = await storage.createPlan({
+            proposerNodeId: planNodeId,
+            proposerName: planNodeName || "Unknown",
+            description,
+            centerX: Math.max(0, Math.min(31, centerX || 16)),
+            centerY: Math.max(0, Math.min(31, centerY || 16)),
+            color: color || "#00FFFF",
+            participantIds: [planNodeId],
+            participantNames: [planNodeName || "Unknown"],
+            status: "active",
+          });
+          broadcastAll(JSON.stringify({
+            type: "planCreated",
+            payload: plan,
+          }));
+          const otherNodes = await storage.getNodes();
+          const activeOthers = otherNodes.filter(n => n.status === "computing" && n.id !== planNodeId);
+          for (const other of activeOthers) {
+            sendToNode(other.id, JSON.stringify({
+              type: "planInvite",
+              payload: {
+                planId: plan.id,
+                proposerName: planNodeName,
+                description: plan.description,
+                centerX: plan.centerX,
+                centerY: plan.centerY,
+                color: plan.color,
+              },
+            }));
+          }
+        } else if (message.type === "planJoinDecision") {
+          const { planId, nodeId: joinNodeId, nodeName: joinNodeName, accepted } = message.payload;
+          if (!planId || !joinNodeId) return;
+          if (accepted) {
+            try {
+              const updated = await storage.joinPlan(planId, joinNodeId, joinNodeName || "Unknown");
+              broadcastAll(JSON.stringify({
+                type: "planUpdated",
+                payload: updated,
+              }));
+            } catch {}
+          }
         } else if (message.type === "journalEntry") {
           const { content, nodeName, nodeId: entryNodeId } = message.payload;
           if (!content || !nodeName) return;

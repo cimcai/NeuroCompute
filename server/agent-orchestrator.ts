@@ -12,7 +12,9 @@ interface OrchestratorConfig {
 const CHAT_INTERVAL_MS = 90_000;
 const BRIDGE_INTERVAL_MS = 120_000;
 const PIXEL_INTERVAL_MS = 60_000;
+const PLAN_INTERVAL_MS = 180_000;
 const GOAL_EXPIRY_MS = 10 * 60 * 1000;
+const PLAN_EXPIRY_MS = 15 * 60 * 1000;
 
 const PIXEL_COLORS = [
   "#00FFFF", "#FF00FF", "#00FF00", "#FFFF00",
@@ -43,17 +45,20 @@ export function startOrchestrator(config: OrchestratorConfig) {
   const chatTimer = setInterval(() => runChatAgent(config), CHAT_INTERVAL_MS);
   const bridgeTimer = setInterval(() => runBridgeAgent(config), BRIDGE_INTERVAL_MS);
   const pixelTimer = setInterval(() => runPixelAgent(config), PIXEL_INTERVAL_MS);
+  const planTimer = setInterval(() => runPlanAgent(config), PLAN_INTERVAL_MS);
 
   setTimeout(() => runChatAgent(config), 15_000);
   setTimeout(() => runBridgeAgent(config), 30_000);
   setTimeout(() => runPixelAgent(config), 10_000);
+  setTimeout(() => runPlanAgent(config), 45_000);
 
-  console.log("[orchestrator] Timers set — chat every 90s, bridge every 120s, pixels every 60s");
+  console.log("[orchestrator] Timers set — chat every 90s, bridge every 120s, pixels every 60s, plans every 180s");
 
   return () => {
     clearInterval(chatTimer);
     clearInterval(bridgeTimer);
     clearInterval(pixelTimer);
+    clearInterval(planTimer);
   };
 }
 
@@ -152,6 +157,116 @@ async function runBridgeAgent(config: OrchestratorConfig) {
     );
   } catch (err) {
     console.error("[orchestrator] Bridge agent error:", err);
+  }
+}
+
+async function runPlanAgent(config: OrchestratorConfig) {
+  try {
+    const active = await getActiveNodes();
+    if (active.length < 2) return;
+
+    const activePlans = await storage.getActivePlans();
+    for (const plan of activePlans) {
+      const age = Date.now() - new Date(plan.createdAt).getTime();
+      if (age > PLAN_EXPIRY_MS) {
+        await storage.completePlan(plan.id);
+        config.broadcastAll(JSON.stringify({ type: "planCompleted", payload: { planId: plan.id } }));
+        console.log(`[orchestrator] Plan "${plan.description}" completed (expired)`);
+      }
+    }
+
+    const currentActive = await storage.getActivePlans();
+    if (currentActive.length >= 2) return;
+
+    const proposer = active[Math.floor(Math.random() * active.length)];
+    let canvasData: any;
+    try {
+      canvasData = await cimc.getCanvas();
+    } catch { return; }
+
+    const nearbyColors = getNearbyColors(canvasData, proposer.pixelX, proposer.pixelY);
+    const otherNodeNames = active.filter(n => n.id !== proposer.id).map(n => n.name).join(", ");
+
+    const sent = config.sendToNode(proposer.id, JSON.stringify({
+      type: "planProposalRequest",
+      payload: {
+        nodeId: proposer.id,
+        currentX: proposer.pixelX,
+        currentY: proposer.pixelY,
+        nearbyColors,
+        otherNodes: otherNodeNames,
+        activeNodeCount: active.length,
+      },
+    }));
+
+    if (!sent) {
+      const COLLAB_PLANS = [
+        { description: "Build a village square with houses around a central plaza", color: "#8B4513" },
+        { description: "Create a river running across the map with bridges", color: "#4169E1" },
+        { description: "Plant a forest of trees in the corner", color: "#228B22" },
+        { description: "Construct a castle with towers and walls", color: "#696969" },
+        { description: "Build a harbor with boats and a lighthouse", color: "#87CEEB" },
+        { description: "Create a farm with fields and a barn", color: "#9ACD32" },
+        { description: "Paint a sunset sky across the top rows", color: "#FF6347" },
+        { description: "Build a mountain range with snowy peaks", color: "#A9A9A9" },
+      ];
+      const chosen = COLLAB_PLANS[Math.floor(Math.random() * COLLAB_PLANS.length)];
+      const centerX = Math.floor(Math.random() * 24) + 4;
+      const centerY = Math.floor(Math.random() * 24) + 4;
+
+      const plan = await storage.createPlan({
+        proposerNodeId: proposer.id,
+        proposerName: proposer.name,
+        description: chosen.description,
+        centerX,
+        centerY,
+        color: chosen.color,
+        participantIds: [proposer.id],
+        participantNames: [proposer.name],
+        status: "active",
+      });
+
+      config.broadcastAll(JSON.stringify({ type: "planCreated", payload: plan }));
+
+      const entry = await storage.createJournalEntry({
+        nodeName: proposer.name,
+        nodeId: proposer.id,
+        content: `📋 Hey everyone! I propose we ${chosen.description.toLowerCase()} near (${centerX},${centerY}). Who wants to join?`,
+      });
+      config.broadcastAll(JSON.stringify({
+        type: "journalEntry",
+        payload: { id: entry.id, nodeName: entry.nodeName, nodeId: entry.nodeId, content: entry.content, createdAt: entry.createdAt.toISOString() },
+      }));
+
+      for (const other of active.filter(n => n.id !== proposer.id)) {
+        config.sendToNode(other.id, JSON.stringify({
+          type: "planInvite",
+          payload: {
+            planId: plan.id,
+            proposerName: proposer.name,
+            description: plan.description,
+            centerX: plan.centerX,
+            centerY: plan.centerY,
+            color: plan.color,
+          },
+        }));
+      }
+
+      const goalData: ParsedGoal = {
+        description: chosen.description,
+        targetX: centerX,
+        targetY: centerY,
+        color: chosen.color,
+        setAt: Date.now(),
+      };
+      await storage.updateNodeGoal(proposer.id, JSON.stringify(goalData));
+      config.broadcastAll(JSON.stringify({
+        type: "nodeGoalSet",
+        payload: { nodeId: proposer.id, nodeName: proposer.name, description: chosen.description, targetX: centerX, targetY: centerY, color: chosen.color },
+      }));
+    }
+  } catch (err) {
+    console.error("[orchestrator] Plan agent error:", err);
   }
 }
 
