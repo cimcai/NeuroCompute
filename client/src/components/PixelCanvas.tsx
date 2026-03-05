@@ -352,11 +352,18 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
         ctx.fill();
       }
 
-      ctx.fillStyle = mc;
+      ctx.fillStyle = isMe ? "#00FF00" : "#FFFFFF";
       ctx.font = `bold ${isMe ? 7 : 6}px monospace`;
       ctx.textAlign = "center";
-      const label = isMe ? "YOU" : pos.name.slice(-4);
-      ctx.fillText(label, px + CELL_SIZE / 2, py - 2);
+      const label = isMe ? "YOU" : (pos.name.length > 10 ? pos.name.slice(0, 9) + "…" : pos.name);
+
+      const labelWidth = ctx.measureText(label).width;
+      const labelX = px + CELL_SIZE / 2;
+      const labelY = py - 3;
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillRect(labelX - labelWidth / 2 - 2, labelY - 6, labelWidth + 4, 8);
+      ctx.fillStyle = isMe ? "#00FF00" : mc;
+      ctx.fillText(label, labelX, labelY);
 
       const bubble = speechBubbles.find(b => b.nodeId === nId);
       if (bubble) {
