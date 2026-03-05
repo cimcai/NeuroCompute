@@ -41,6 +41,21 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/nodes/:id/status", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { status } = req.body;
+      if (!status || !["computing", "idle", "offline"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+      const node = await storage.updateNodeStatus(id, status);
+      res.json(node);
+    } catch (err) {
+      console.error("Status update error:", err);
+      res.status(500).json({ message: "Failed to update status" });
+    }
+  });
+
   app.patch("/api/nodes/:id/display-name", async (req, res) => {
     try {
       const id = Number(req.params.id);

@@ -55,9 +55,16 @@ export function useComputeNode() {
   const [progressText, setProgressText] = useState("");
   const [sessionTokens, setSessionTokens] = useState(0);
   const [tokensPerSecond, setTokensPerSecond] = useState(0);
-  const [nodeId, setNodeId] = useState<number | null>(null);
-  const [nodeName, setNodeName] = useState<string | null>(null);
-  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [nodeId, setNodeId] = useState<number | null>(() => {
+    const saved = localStorage.getItem("neurocompute_nodeId");
+    return saved ? parseInt(saved, 10) : null;
+  });
+  const [nodeName, setNodeName] = useState<string | null>(() => {
+    return localStorage.getItem("neurocompute_nodeName");
+  });
+  const [displayName, setDisplayName] = useState<string | null>(() => {
+    return localStorage.getItem("neurocompute_displayName");
+  });
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL_ID);
   const [activeModel, setActiveModel] = useState<string | null>(null);
   const [currentRate, setCurrentRate] = useState(10);
@@ -80,11 +87,18 @@ export function useComputeNode() {
 
   useEffect(() => {
     nodeIdRef.current = nodeId;
+    if (nodeId) localStorage.setItem("neurocompute_nodeId", String(nodeId));
   }, [nodeId]);
 
   useEffect(() => {
     nodeNameRef.current = displayName || nodeName;
+    if (nodeName) localStorage.setItem("neurocompute_nodeName", nodeName);
   }, [nodeName, displayName]);
+
+  useEffect(() => {
+    if (displayName) localStorage.setItem("neurocompute_displayName", displayName);
+    else localStorage.removeItem("neurocompute_displayName");
+  }, [displayName]);
 
   useEffect(() => {
     fetch("/api/network/rate")
@@ -532,6 +546,43 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
 
       let currentId = nodeId;
       let currentName = nodeName;
+
+      if (currentId) {
+        let nodeExists = false;
+        try {
+          const res = await fetch(`/api/nodes/${currentId}`);
+          if (res.ok) {
+            const existing = await res.json();
+            setNodeName(existing.name);
+            if (existing.displayName) {
+              setDisplayName(existing.displayName);
+            }
+            currentName = displayName || existing.displayName || existing.name;
+            nodeExists = true;
+          }
+        } catch {}
+
+        if (nodeExists) {
+          try {
+            await fetch(`/api/nodes/${currentId}/status`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: "computing" }),
+            });
+          } catch {
+            console.warn("[compute] Failed to update status, continuing with existing node");
+          }
+          if (ws.connected) {
+            ws.emit("nodeJoined", { id: currentId });
+          }
+        } else {
+          currentId = null;
+          localStorage.removeItem("neurocompute_nodeId");
+          localStorage.removeItem("neurocompute_nodeName");
+          localStorage.removeItem("neurocompute_displayName");
+        }
+      }
+
       if (!currentId) {
         const name = `Node-${Math.floor(Math.random() * 10000).toString().padStart(4, "0")}`;
         const newNode = await createNode.mutateAsync({
