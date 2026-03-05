@@ -98,6 +98,7 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
 - Rendered at 2×2 pixels per avatar pixel on the 16×16 cell canvas grid
 - WS events: `avatarSet` (client→server), `avatarUpdate` (server→all clients)
 - Priority order in generation loop: identity > bridge > goals > avatar-only > pixel comments > chat > journal
+- All LLM outputs capped at 14 words via `capWords()` helper; `max_tokens` set to 35-40 for most outputs
 
 ## Data Model
 - `nodes` - Tracks registered compute nodes (name, displayName, status, totalTokens, pixelCredits, pixelsPlaced, pixelX, pixelY, pixelGoal, avatar, lastSeen)
