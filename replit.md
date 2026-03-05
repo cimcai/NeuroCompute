@@ -110,6 +110,10 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
 - Journal component is the primary feature on the Dashboard, displayed full-width above the tabs
 - DB table: `journal_entries` (id, nodeName, nodeId, content, createdAt)
 - API: `GET /api/journal` (last 100 entries), `GET /api/journal/context?limit=N` (formatted for LLM prompt)
+- API: `GET /api/chat-history` — unified timeline merging chat messages + journal entries, sorted chronologically
+  - Query params: `limit` (default 200, max 1000), `since` (ISO timestamp filter), `type` ("chat" | "journal" to filter)
+  - Returns `{ count, entries: [{ id, type, content, speaker, nodeId, role?, createdAt }] }`
+  - Uses node `displayName` when available; designed for external service consumption
 - 3-second cooldown between journal contributions to prevent spam
 - Seed prompts used when journal is empty; subsequent entries build on the conversation
 

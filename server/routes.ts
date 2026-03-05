@@ -231,6 +231,83 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/chat-history", async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 200, 1000);
+      let since: Date | null = null;
+      if (req.query.since) {
+        const parsed = new Date(req.query.since as string);
+        if (isNaN(parsed.getTime())) {
+          return res.status(400).json({ message: "Invalid 'since' timestamp — use ISO 8601 format" });
+        }
+        since = parsed;
+      }
+      const type = req.query.type as string | undefined;
+      if (type && type !== "chat" && type !== "journal") {
+        return res.status(400).json({ message: "Invalid 'type' — must be 'chat' or 'journal'" });
+      }
+
+      const fetchLimit = limit * 2;
+      const [msgs, journal, allNodes] = await Promise.all([
+        type !== "journal" ? storage.getMessages(fetchLimit) : Promise.resolve([]),
+        type !== "chat" ? storage.getJournalEntries(fetchLimit) : Promise.resolve([]),
+        storage.getNodes(),
+      ]);
+
+      const nodeMap = new Map(allNodes.map(n => [n.id, n]));
+
+      const unified: Array<{
+        id: number;
+        type: "chat" | "journal";
+        content: string;
+        speaker: string;
+        nodeId: number | null;
+        role?: string;
+        createdAt: string;
+      }> = [];
+
+      for (const m of msgs) {
+        const ts = m.createdAt.toISOString();
+        if (since && m.createdAt < since) continue;
+        const node = m.nodeId ? nodeMap.get(m.nodeId) : null;
+        unified.push({
+          id: m.id,
+          type: "chat",
+          content: m.content,
+          speaker: node?.displayName || m.senderName,
+          nodeId: m.nodeId,
+          role: m.role,
+          createdAt: ts,
+        });
+      }
+
+      for (const j of journal) {
+        const ts = j.createdAt.toISOString();
+        if (since && j.createdAt < since) continue;
+        const node = j.nodeId ? nodeMap.get(j.nodeId) : null;
+        unified.push({
+          id: j.id,
+          type: "journal",
+          content: j.content,
+          speaker: node?.displayName || j.nodeName,
+          nodeId: j.nodeId,
+          createdAt: ts,
+        });
+      }
+
+      unified.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const trimmed = unified.slice(-limit);
+
+      res.json({
+        count: trimmed.length,
+        entries: trimmed,
+      });
+    } catch (err) {
+      console.error("Chat history error:", err);
+      res.status(500).json({ message: "Failed to fetch chat history" });
+    }
+  });
+
   // CIMC proxy endpoints
   app.get("/api/cimc/conversation", async (req, res) => {
     try {
