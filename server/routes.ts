@@ -41,6 +41,22 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/nodes/:id/display-name", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { displayName } = req.body;
+      if (!displayName || typeof displayName !== "string" || displayName.trim().length === 0) {
+        return res.status(400).json({ message: "Display name is required" });
+      }
+      const trimmed = displayName.trim().slice(0, 32);
+      const node = await storage.updateNodeDisplayName(id, trimmed);
+      res.json(node);
+    } catch (err) {
+      console.error("Display name update error:", err);
+      res.status(500).json({ message: "Failed to update display name" });
+    }
+  });
+
   app.get("/api/nodes/:id/proof", async (req, res) => {
     try {
       const node = await storage.getNode(Number(req.params.id));

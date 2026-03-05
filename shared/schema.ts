@@ -18,6 +18,7 @@ export const GRID_CENTER = 16;
 export const nodes = pgTable("nodes", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  displayName: text("display_name"),
   totalTokens: integer("total_tokens").default(0).notNull(),
   tokensSinceLastCredit: integer("tokens_since_last_credit").default(0).notNull(),
   pixelCredits: integer("pixel_credits").default(0).notNull(),
@@ -29,7 +30,7 @@ export const nodes = pgTable("nodes", {
   lastSeen: timestamp("last_seen").defaultNow().notNull(),
 });
 
-export const insertNodeSchema = createInsertSchema(nodes).omit({ id: true, totalTokens: true, tokensSinceLastCredit: true, pixelCredits: true, pixelsPlaced: true, pixelX: true, pixelY: true, pixelGoal: true, lastSeen: true });
+export const insertNodeSchema = createInsertSchema(nodes).omit({ id: true, totalTokens: true, tokensSinceLastCredit: true, pixelCredits: true, pixelsPlaced: true, pixelX: true, pixelY: true, pixelGoal: true, lastSeen: true, displayName: true });
 
 export type Node = typeof nodes.$inferSelect;
 export type InsertNode = z.infer<typeof insertNodeSchema>;

@@ -57,6 +57,7 @@ export function useComputeNode() {
   const [tokensPerSecond, setTokensPerSecond] = useState(0);
   const [nodeId, setNodeId] = useState<number | null>(null);
   const [nodeName, setNodeName] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL_ID);
   const [activeModel, setActiveModel] = useState<string | null>(null);
   const [currentRate, setCurrentRate] = useState(10);
@@ -81,8 +82,8 @@ export function useComputeNode() {
   }, [nodeId]);
 
   useEffect(() => {
-    nodeNameRef.current = nodeName;
-  }, [nodeName]);
+    nodeNameRef.current = displayName || nodeName;
+  }, [nodeName, displayName]);
 
   useEffect(() => {
     fetch("/api/network/rate")
@@ -467,9 +468,19 @@ COLOR: [primary hex color like #8B4513 for wood, #228B22 for trees, #4169E1 for 
           status: "computing",
         });
         currentId = newNode.id;
-        currentName = newNode.name;
+        currentName = displayName || newNode.name;
         setNodeId(newNode.id);
         setNodeName(newNode.name);
+
+        if (displayName) {
+          try {
+            await fetch(`/api/nodes/${newNode.id}/display-name`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ displayName }),
+            });
+          } catch {}
+        }
 
         if (ws.connected) {
           ws.emit("nodeJoined", { id: newNode.id });
@@ -506,6 +517,22 @@ COLOR: [primary hex color like #8B4513 for wood, #228B22 for trees, #4169E1 for 
     }
   }, [nodeId, nodeName, createNode, ws, runGenerationLoop, selectedModel, activeModel, checkWebGPU]);
 
+  const updateDisplayName = useCallback(async (name: string) => {
+    const trimmed = name.trim().slice(0, 32);
+    setDisplayName(trimmed || null);
+    if (nodeId && trimmed) {
+      try {
+        await fetch(`/api/nodes/${nodeId}/display-name`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ displayName: trimmed }),
+        });
+      } catch {}
+    }
+  }, [nodeId]);
+
+  const chatName = displayName || nodeName;
+
   return {
     status,
     progressText,
@@ -513,6 +540,10 @@ COLOR: [primary hex color like #8B4513 for wood, #228B22 for trees, #4169E1 for 
     tokensPerSecond,
     nodeId,
     nodeName,
+    displayName,
+    chatName,
+    setDisplayName,
+    updateDisplayName,
     selectedModel,
     setSelectedModel,
     activeModel,
