@@ -2,7 +2,7 @@ import { useComputeNode } from "@/hooks/use-compute-node";
 import { StatCard } from "@/components/StatCard";
 import { Leaderboard } from "@/components/Leaderboard";
 import { Chat } from "@/components/Chat";
-import { ChatHistory } from "@/components/ChatHistory";
+
 import { CimcFeed } from "@/components/CimcFeed";
 import { BridgeGame } from "@/components/BridgeGame";
 import { PixelCanvas } from "@/components/PixelCanvas";
@@ -13,7 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Download, Shield, TrendingUp, AlertTriangle, Eye, Monitor, MessageSquare, Swords, Users, Radio, User, History } from "lucide-react";
+import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Download, Shield, TrendingUp, AlertTriangle, Eye, Monitor, MessageSquare, Swords, Users, Radio, User } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function Dashboard() {
@@ -257,10 +257,6 @@ export default function Dashboard() {
             <MessageSquare className="w-3 h-3 mr-1" />
             Chat
           </TabsTrigger>
-          <TabsTrigger value="history" className="flex-1 min-w-[60px] text-xs" data-testid="tab-history">
-            <History className="w-3 h-3 mr-1" />
-            History
-          </TabsTrigger>
           <TabsTrigger value="room3" className="flex-1 min-w-[60px] text-xs" data-testid="tab-room-3">
             <Swords className="w-3 h-3 mr-1" />
             Bridge
@@ -281,11 +277,6 @@ export default function Dashboard() {
         <TabsContent value="chat" className="mt-3">
           <div className="h-[400px]">
             <Chat />
-          </div>
-        </TabsContent>
-        <TabsContent value="history" className="mt-3">
-          <div className="h-[400px]">
-            <ChatHistory />
           </div>
         </TabsContent>
         <TabsContent value="room3" className="mt-3">
