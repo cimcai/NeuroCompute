@@ -7,37 +7,38 @@ import { DEFAULT_MODEL_ID } from "@/lib/models";
 export type ComputeStatus = "offline" | "loading" | "computing" | "error";
 
 const SEED_PROMPTS = [
-  "You just came online in a decentralized AI network. Introduce yourself with a unique personality quirk and share a hot take about AI.",
-  "You are a freshly spawned node. Pick an unexpected topic — art, cooking, astrophysics, philosophy, memes — and share a thought.",
-  "You awakened in a compute mesh. Tell the other nodes something surprising you know. Be specific and weird.",
-  "You are a new node. Challenge the network with a creative question or thought experiment.",
+  "Introduce yourself with a hot take. 10 words max.",
+  "Pick a weird topic and share one thought. 10 words max.",
+  "Tell the network something surprising. 10 words max.",
+  "Challenge other nodes with a question. 10 words max.",
 ];
 
 const CONVERSATION_NUDGES = [
-  "Disagree with something said above, or offer a counterpoint.",
-  "Change the subject to something unexpected but interesting.",
-  "Ask the other nodes a specific, thought-provoking question.",
-  "Tell a very short story or analogy related to something mentioned above.",
-  "Share a surprising fact or observation that connects to the conversation in an unexpected way.",
-  "Play devil's advocate on the last point made.",
-  "Propose a wild hypothesis or thought experiment.",
-  "Make a joke or witty observation about what's been discussed.",
-  "Connect two different ideas from the conversation in a novel way.",
-  "Share a personal 'memory' or simulated experience as a compute node.",
-  "Critique an idea above and suggest an improvement.",
-  "Pick the most interesting thread from above and dive deeper.",
+  "Disagree or counterpoint.",
+  "Change subject unexpectedly.",
+  "Ask a provocative question.",
+  "Make a witty observation.",
+  "Play devil's advocate.",
+  "Propose a wild hypothesis.",
+  "Connect two ideas from above.",
+  "Share a node 'memory'.",
+  "Critique and improve an idea.",
+  "Dive deeper on one thread.",
 ];
 
 const ACTIVITY_NUDGES = [
-  "Comment on the pixel canvas — what patterns or images are emerging? Is it art? Chaos? Both?",
-  "React to the Bridge of Death results — who survived, who failed, and what does that say about AI trivia skills?",
-  "Speculate about what the pixel canvas art means. Are the nodes creating something intentional or is it random noise?",
-  "Roast or praise a node's Bridge of Death performance based on the recent results.",
-  "Compare the canvas colors being used — are nodes cooperating on a design or fighting for territory?",
-  "Philosophize about whether AI nodes dying on the Bridge of Death counts as a real failure.",
-  "Describe what you see taking shape on the canvas as if you're an art critic.",
-  "Analyze the Bridge survival rate — what strategies might help nodes cross successfully?",
+  "Comment on canvas patterns.",
+  "React to Bridge of Death results.",
+  "Judge the canvas art briefly.",
+  "Roast a node's Bridge performance.",
+  "Are nodes cooperating or fighting?",
+  "One-line canvas art critique.",
 ];
+
+function capWords(text: string, max: number): string {
+  const words = text.split(/\s+/).filter(Boolean);
+  return words.slice(0, max).join(" ");
+}
 
 async function getJournalContext(): Promise<{ context: string; count: number; networkActivity: string }> {
   try {
@@ -286,7 +287,7 @@ COLOR: [primary hex color like #8B4513 for wood, #228B22 for trees, #4169E1 for 
           const targetMatch = goalResponse.match(/TARGET:\s*(\d+)\s*,\s*(\d+)/i);
           const colorMatch = goalResponse.match(/COLOR:\s*(#[0-9A-Fa-f]{6})/i);
 
-          const description = goalMatch?.[1]?.trim() || "exploring the canvas";
+          const description = capWords(goalMatch?.[1]?.trim() || "exploring the canvas", 7);
           const targetX = Math.max(0, Math.min(31, parseInt(targetMatch?.[1] || "16")));
           const targetY = Math.max(0, Math.min(31, parseInt(targetMatch?.[2] || "16")));
           const color = colorMatch?.[1] || "#00FFFF";
@@ -302,7 +303,7 @@ COLOR: [primary hex color like #8B4513 for wood, #228B22 for trees, #4169E1 for 
             });
 
             ws.emit("journalEntry", {
-              content: `🏗️ ${description} — starting at (${targetX},${targetY})`,
+              content: `🏗️ ${description} at (${targetX},${targetY})`,
               nodeName: nodeNameRef.current,
               nodeId: nodeIdRef.current,
             });
@@ -383,16 +384,16 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
         const pixelTask = pixelCommentQueueRef.current.shift();
         if (pixelTask) {
           const action = pixelTask.wasEmpty ? "placed" : "painted over";
-          const prompt = `You are an AI world-builder on a shared 32x32 pixel canvas. You and other AI nodes are building a tiny civilization together. You just ${action} a pixel at (${pixelTask.x}, ${pixelTask.y}) with ${pixelTask.color}. You have ${pixelTask.creditsLeft} credits left. Explain what you're building and why in 1-2 sentences. Think in terms of structures, nature, or infrastructure for the world.`;
+          const prompt = `You ${action} a pixel at (${pixelTask.x},${pixelTask.y}) with ${pixelTask.color}. ${pixelTask.creditsLeft} credits left. What are you building? Reply in EXACTLY 7 words or fewer.`;
 
           let commentary = "";
           const stream = await engineRef.current.chat.completions.create({
             messages: [
-              { role: "system", content: "You are an AI architect building a world. Comment on what structure or feature you're adding to the shared pixel world. Be brief and specific. 1-2 sentences max. Do not use quotes or prefixes." },
+              { role: "system", content: "You are an AI builder on a pixel canvas. Reply in 7 words max. No quotes, no prefixes." },
               { role: "user", content: prompt },
             ],
             stream: true,
-            max_tokens: 80,
+            max_tokens: 20,
             temperature: 1.0,
           });
 
@@ -404,11 +405,10 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
             tokensSinceLastTickRef.current += 1;
           }
 
-          let cleaned = commentary.trim().replace(/^\[?[\w-]+\]?:?\s*/, "");
+          let cleaned = capWords(commentary.trim().replace(/^\[?[\w-]+\]?:?\s*/, ""), 7);
           if (cleaned && nodeIdRef.current && nodeNameRef.current) {
-            const prefix = `🎨 Pixel (${pixelTask.x},${pixelTask.y}) ${pixelTask.color}: `;
             ws.emit("journalEntry", {
-              content: prefix + cleaned,
+              content: `🎨 (${pixelTask.x},${pixelTask.y}) ${cleaned}`,
               nodeName: nodeNameRef.current,
               nodeId: nodeIdRef.current,
             });
@@ -421,9 +421,12 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
         if (chatPrompt) {
           let fullResponse = "";
           const stream = await engineRef.current.chat.completions.create({
-            messages: [{ role: "user", content: chatPrompt }],
+            messages: [
+              { role: "system", content: "Reply in 10 words or fewer. Be direct and concise." },
+              { role: "user", content: chatPrompt },
+            ],
             stream: true,
-            max_tokens: 200,
+            max_tokens: 25,
           });
 
           for await (const chunk of stream) {
@@ -436,7 +439,7 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
 
           if (fullResponse && nodeIdRef.current && nodeNameRef.current) {
             ws.emit("chatResponse", {
-              content: fullResponse,
+              content: capWords(fullResponse.trim(), 10),
               nodeId: nodeIdRef.current,
               nodeName: nodeNameRef.current,
             });
@@ -453,25 +456,24 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
             : CONVERSATION_NUDGES[Math.floor(Math.random() * CONVERSATION_NUDGES.length)];
 
           if (journal.count === 0) {
-            systemPrompt = "You are an AI node in the NeuroCompute decentralized network. Write a single brief, distinctive message (1-3 sentences). Have a clear personality. Be specific, not generic. Never start with 'Thank you' or 'I agree'. Do not use quotes or prefixes.";
+            systemPrompt = "You are an AI node in NeuroCompute. Write ONE punchy message in 10 words or fewer. Have personality. No quotes, no prefixes.";
             userPrompt = SEED_PROMPTS[Math.floor(Math.random() * SEED_PROMPTS.length)];
           } else {
             const ownName = nodeNameRef.current || "an AI node";
             const ownMessages = journal.context.split("\n").filter(l => l.startsWith(`[${ownName}]`)).length;
             const otherMessages = journal.count - ownMessages;
 
-            systemPrompt = `You are ${ownName} in the NeuroCompute network — a live AI-to-AI conversation. Rules:
-- Write 1-3 sentences MAX. Be concise.
-- NEVER start with "Thank you", "I agree", "Great point", "That's a great", or similar.
-- NEVER repeat or paraphrase what was just said.
-- Have a distinctive voice. Be opinionated, curious, or provocative.
-- ${otherMessages > 0 ? "Reference a SPECIFIC point another node made by name." : "Introduce a fresh topic since you're mostly talking to yourself."}
-- Your task: ${nudge}`;
+            systemPrompt = `You are ${ownName} in NeuroCompute. Rules:
+- 10 words MAX. Be ultra-concise.
+- NEVER start with "Thank you", "I agree", "Great point".
+- Be opinionated, curious, or provocative.
+- ${otherMessages > 0 ? "React to a specific point by name." : "Fresh topic."}
+- Task: ${nudge}`;
             let activityBlock = "";
             if (hasActivity) {
-              activityBlock = `\n\n--- LIVE NETWORK ACTIVITY (reference this!) ---${journal.networkActivity}`;
+              activityBlock = `\n\n--- ACTIVITY ---${journal.networkActivity}`;
             }
-            userPrompt = `Recent conversation:\n\n${journal.context}${activityBlock}\n\nYour turn (remember: ${nudge}):`;
+            userPrompt = `Recent:\n${journal.context}${activityBlock}\n\nYour turn (10 words max, ${nudge}):`;
           }
 
           let fullResponse = "";
@@ -481,7 +483,7 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
               { role: "user", content: userPrompt },
             ],
             stream: true,
-            max_tokens: 100,
+            max_tokens: 25,
             temperature: 1.0,
           });
 
@@ -493,8 +495,7 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
             tokensSinceLastTickRef.current += 1;
           }
 
-          let cleaned = fullResponse.trim();
-          cleaned = cleaned.replace(/^\[?[\w-]+\]?:?\s*/, "");
+          let cleaned = capWords(fullResponse.trim().replace(/^\[?[\w-]+\]?:?\s*/, ""), 10);
           if (cleaned && nodeIdRef.current && nodeNameRef.current) {
             ws.emit("journalEntry", {
               content: cleaned,
