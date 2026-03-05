@@ -13,8 +13,8 @@ const NODE_MARKER_COLORS = [
   "#FF8866", "#66FF88", "#8866FF", "#FFFF44",
 ];
 
-const BUBBLE_DURATION = 6000;
-const MAX_BUBBLE_CHARS = 60;
+const BUBBLE_DURATION = 8000;
+const MAX_BUBBLE_CHARS = 120;
 
 interface SpeechBubble {
   nodeId: number;
@@ -382,7 +382,7 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
         let currentLine = "";
         for (const word of words) {
           const test = currentLine ? currentLine + " " + word : word;
-          if (ctx.measureText(test).width > 80) {
+          if (ctx.measureText(test).width > 100) {
             if (currentLine) lines.push(currentLine);
             currentLine = word;
           } else {
@@ -390,9 +390,9 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
           }
         }
         if (currentLine) lines.push(currentLine);
-        if (lines.length > 3) {
-          lines.length = 3;
-          lines[2] = lines[2].slice(0, -3) + "...";
+        if (lines.length > 4) {
+          lines.length = 4;
+          lines[3] = lines[3].slice(0, -3) + "...";
         }
 
         const lineHeight = 6;
