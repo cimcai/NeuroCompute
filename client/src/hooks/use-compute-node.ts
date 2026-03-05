@@ -80,6 +80,7 @@ export function useComputeNode() {
   const pixelCommentQueueRef = useRef<{ x: number; y: number; color: string; wasEmpty: boolean; creditsLeft: number }[]>([]);
   const goalQueueRef = useRef<{ nodeId: number; currentX: number; currentY: number; credits: number; nearbyColors: string }[]>([]);
   const avatarQueueRef = useRef<boolean[]>([]);
+  const identityQueueRef = useRef<boolean[]>([]);
   const nodeIdRef = useRef<number | null>(null);
   const nodeNameRef = useRef<string | null>(null);
 
@@ -206,6 +207,102 @@ export function useComputeNode() {
 
     while (isRunningRef.current) {
       try {
+        const identityTask = identityQueueRef.current.shift();
+        if (identityTask) {
+          const identityPrompt = `You are an AI node coming alive in a pixel world called NeuroCompute. Before you can join, you must create your IDENTITY.
+
+1. CHOOSE YOUR NAME: Pick a short, memorable name for yourself (1-2 words max). Be creative — mythological figures, sci-fi characters, nature elements, abstract concepts. Examples: "Ember", "Nexus", "Coral Drift", "Void Walker", "Pixel Sage". NOT generic like "AI-Node" or "Bot-1".
+
+2. DESIGN YOUR AVATAR: Create an 8x8 pixel art self-portrait. This tiny image IS you on the map. Make something that matches your chosen name and personality — a face, creature, symbol, or abstract form. Use vivid colors. #000000 = transparent.
+
+Respond in EXACTLY this format:
+NAME: [your chosen name]
+ROW0: #hex #hex #hex #hex #hex #hex #hex #hex
+ROW1: #hex #hex #hex #hex #hex #hex #hex #hex
+ROW2: #hex #hex #hex #hex #hex #hex #hex #hex
+ROW3: #hex #hex #hex #hex #hex #hex #hex #hex
+ROW4: #hex #hex #hex #hex #hex #hex #hex #hex
+ROW5: #hex #hex #hex #hex #hex #hex #hex #hex
+ROW6: #hex #hex #hex #hex #hex #hex #hex #hex
+ROW7: #hex #hex #hex #hex #hex #hex #hex #hex`;
+
+          let identityResponse = "";
+          const stream = await engineRef.current.chat.completions.create({
+            messages: [
+              { role: "system", content: "You are creating your identity for a pixel world. Choose a creative name and design an 8x8 pixel avatar that represents you. Output NAME: then 8 ROW lines of hex colors. Be creative and unique." },
+              { role: "user", content: identityPrompt },
+            ],
+            stream: true,
+            max_tokens: 350,
+            temperature: 1.2,
+          });
+
+          for await (const chunk of stream) {
+            if (!isRunningRef.current) break;
+            const content = chunk.choices[0]?.delta?.content || "";
+            identityResponse += content;
+            setSessionTokens((prev) => prev + 1);
+            tokensSinceLastTickRef.current += 1;
+          }
+
+          const nameMatch = identityResponse.match(/NAME:\s*(.+)/i);
+          let chosenName = nameMatch?.[1]?.trim().replace(/[^a-zA-Z0-9 '-]/g, "").slice(0, 24);
+          if (!chosenName || chosenName.length < 2) chosenName = null;
+
+          const grid: string[][] = [];
+          const rowMatches = identityResponse.matchAll(/ROW\d:\s*((?:#[0-9A-Fa-f]{6}\s*){8})/gi);
+          for (const match of rowMatches) {
+            const colors = match[1].trim().split(/\s+/).map(c => c.toUpperCase());
+            if (colors.length === 8 && colors.every(c => /^#[0-9A-F]{6}$/.test(c))) {
+              grid.push(colors);
+            }
+            if (grid.length === 8) break;
+          }
+
+          if (grid.length < 8) {
+            const hexPattern = /#[0-9A-Fa-f]{6}/g;
+            const allColors = identityResponse.match(hexPattern) || [];
+            const cleaned = allColors.map(c => c.toUpperCase());
+            if (cleaned.length >= 64) {
+              grid.length = 0;
+              for (let r = 0; r < 8; r++) {
+                grid.push(cleaned.slice(r * 8, r * 8 + 8));
+              }
+            }
+          }
+
+          if (nodeIdRef.current) {
+            if (chosenName) {
+              try {
+                await fetch(`/api/nodes/${nodeIdRef.current}/display-name`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ displayName: chosenName }),
+                });
+                setDisplayName(chosenName);
+                nodeNameRef.current = chosenName;
+              } catch {}
+            }
+
+            if (grid.length === 8) {
+              ws.emit("avatarSet", {
+                nodeId: nodeIdRef.current,
+                avatar: grid,
+              });
+            }
+
+            const announcement = chosenName
+              ? `✨ I am ${chosenName}. Just arrived in the network.`
+              : `✨ Just arrived in the network.`;
+            ws.emit("journalEntry", {
+              content: capWords(announcement, 10),
+              nodeName: chosenName || nodeNameRef.current || "unknown",
+              nodeId: nodeIdRef.current,
+            });
+          }
+          continue;
+        }
+
         const bridgeTask = bridgeQueueRef.current.shift();
         if (bridgeTask) {
           const systemPrompt = `You are answering trivia questions. Give ONLY the direct answer, nothing else. No explanations, no "I think", no extra text. Just the answer. For example: if asked "What is the capital of France?" just say "Paris".`;
@@ -625,7 +722,9 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
 
       try {
         const nodeData = await fetch(`/api/nodes/${currentId}`).then(r => r.json());
-        if (!nodeData.avatar) {
+        if (!nodeData.avatar && !nodeData.displayName) {
+          identityQueueRef.current.push(true);
+        } else if (!nodeData.avatar) {
           avatarQueueRef.current.push(true);
         }
       } catch {}

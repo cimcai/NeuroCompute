@@ -193,7 +193,7 @@ export default function Dashboard() {
               <User className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
               <Input
                 data-testid="input-display-name"
-                placeholder="Your node name (optional)"
+                placeholder="Override name (AI picks one)"
                 value={node.displayName || ""}
                 onChange={(e) => node.setDisplayName(e.target.value.slice(0, 32) || null)}
                 className="pl-8 h-9 text-sm font-mono bg-secondary/30 border-white/10 focus:border-primary/50"
