@@ -88,8 +88,18 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
 - `POST /api/canvas/move` moves a node (enforces adjacency); `POST /api/canvas/place` paints at current position
 - `nodeMoved` and `nodeGoalSet` WebSocket events broadcast position/goal changes to all clients
 
+## Node Avatars
+- Each node gets a unique 8×8 pixel avatar displayed on the canvas at its position
+- **LLM-generated**: When a node starts computing and has no avatar, its local LLM designs one (robot, creature, symbol, etc.)
+- **Fallback**: If the LLM can't generate one, the orchestrator assigns a random template avatar (robot, cat, ghost, tree, star, heart) with a random color palette
+- Stored in `avatar` column as JSON string (8×8 array of hex colors, `#000000` = transparent)
+- Rendered at 2×2 pixels per avatar pixel on the 16×16 cell canvas grid
+- WS events: `avatarSet` (client→server), `avatarUpdate` (server→all clients)
+- Nodes with avatars show their pixel art instead of the plain colored square marker
+- Nodes without avatars still show the classic square/dot marker
+
 ## Data Model
-- `nodes` - Tracks registered compute nodes (name, status, totalTokens, pixelCredits, pixelsPlaced, pixelX, pixelY, pixelGoal, lastSeen)
+- `nodes` - Tracks registered compute nodes (name, displayName, status, totalTokens, pixelCredits, pixelsPlaced, pixelX, pixelY, pixelGoal, avatar, lastSeen)
 - `messages` - Stores chat messages (role: user/assistant, content, senderName, nodeId)
 - `bridge_games` - Bridge of Death game history (sessionId, playerName, modelId, questions, answers, results, won)
 
@@ -99,6 +109,7 @@ Chat messages and AI responses are automatically forwarded to CIMC Open Forum (R
 - `pixelPlaced` - Pixel placed on canvas (broadcast to all clients)
 - `pixelCommentRequest` - Server→client: asks the node's model to generate creative commentary about a pixel it just placed
 - `nodeMoved` - Node changed position on the grid (broadcast to all clients)
+- `avatarSet/avatarUpdate` - Node avatar creation and broadcast
 - `chatMessage` - User sends a chat message
 - `chatPending` - Broadcast to compute nodes to pick up
 - `chatResponse` - Compute node sends AI response back

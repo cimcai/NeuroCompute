@@ -54,6 +54,7 @@ export const ws = {
     bridgeAnswer: z.object({ gameId: z.number(), answer: z.string(), nodeId: z.number(), nodeName: z.string() }),
     journalEntry: z.object({ content: z.string(), nodeName: z.string(), nodeId: z.number() }),
     pixelGoalSet: z.object({ nodeId: z.number(), nodeName: z.string(), description: z.string(), targetX: z.number(), targetY: z.number(), color: z.string() }),
+    avatarSet: z.object({ nodeId: z.number(), avatar: z.array(z.array(z.string())) }),
   },
   receive: {
     nodeJoined: z.object({ id: z.number(), name: z.string() }),
@@ -71,6 +72,7 @@ export const ws = {
     nodeMoved: z.object({ nodeId: z.number(), nodeName: z.string(), x: z.number(), y: z.number() }),
     nodeGoalSet: z.object({ nodeId: z.number(), nodeName: z.string(), description: z.string(), targetX: z.number(), targetY: z.number(), color: z.string() }),
     nodeGoalCleared: z.object({ nodeId: z.number() }),
+    avatarUpdate: z.object({ nodeId: z.number(), avatar: z.array(z.array(z.string())) }),
   },
 };
 

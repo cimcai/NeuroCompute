@@ -31,6 +31,8 @@ interface NodeGoal {
   color: string;
 }
 
+type AvatarGrid = string[][];
+
 interface PixelCanvasProps {
   nodeId: number | null;
   autoFollow?: boolean;
@@ -44,6 +46,7 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
   const [nodePositions, setNodePositions] = useState<Map<number, { x: number; y: number; name: string }>>(new Map());
   const [speechBubbles, setSpeechBubbles] = useState<SpeechBubble[]>([]);
   const [nodeGoals, setNodeGoals] = useState<Map<number, NodeGoal>>(new Map());
+  const [nodeAvatars, setNodeAvatars] = useState<Map<number, AvatarGrid>>(new Map());
   const [following, setFollowing] = useState(autoFollow);
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -65,7 +68,7 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
     refetchInterval: 15000,
   });
 
-  const nodesQuery = useQuery<{ id: number; name: string; pixelX: number; pixelY: number; pixelGoal: string | null; status: string }[]>({
+  const nodesQuery = useQuery<{ id: number; name: string; displayName: string | null; pixelX: number; pixelY: number; pixelGoal: string | null; avatar: string | null; status: string }[]>({
     queryKey: ["/api/nodes"],
     refetchInterval: 10000,
   });
@@ -74,19 +77,31 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
     if (nodesQuery.data) {
       const posMap = new Map<number, { x: number; y: number; name: string }>();
       const goalMap = new Map<number, NodeGoal>();
+      const avatarMap = new Map<number, AvatarGrid>();
       for (const n of nodesQuery.data) {
         if (n.status === "computing") {
-          posMap.set(n.id, { x: n.pixelX, y: n.pixelY, name: n.name });
+          posMap.set(n.id, { x: n.pixelX, y: n.pixelY, name: n.displayName || n.name });
           if (n.pixelGoal) {
             try {
               const g = JSON.parse(n.pixelGoal);
-              goalMap.set(n.id, { nodeId: n.id, nodeName: n.name, description: g.description, targetX: g.targetX, targetY: g.targetY, color: g.color });
+              goalMap.set(n.id, { nodeId: n.id, nodeName: n.displayName || n.name, description: g.description, targetX: g.targetX, targetY: g.targetY, color: g.color });
+            } catch {}
+          }
+          if (n.avatar) {
+            try {
+              const a = JSON.parse(n.avatar);
+              if (Array.isArray(a) && a.length === 8) avatarMap.set(n.id, a);
             } catch {}
           }
         }
       }
       setNodePositions(posMap);
       setNodeGoals(goalMap);
+      setNodeAvatars(prev => {
+        const merged = new Map(prev);
+        avatarMap.forEach((v, k) => merged.set(k, v));
+        return merged;
+      });
     }
   }, [nodesQuery.data]);
 
@@ -120,6 +135,17 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
       setNodeGoals(prev => {
         const next = new Map(prev);
         next.set(data.nodeId, data);
+        return next;
+      });
+    });
+    return unsub;
+  }, [ws]);
+
+  useEffect(() => {
+    const unsub = ws.subscribe("avatarUpdate", (data: { nodeId: number; avatar: string[][] }) => {
+      setNodeAvatars(prev => {
+        const next = new Map(prev);
+        next.set(data.nodeId, data.avatar);
         return next;
       });
     });
@@ -284,21 +310,47 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
 
       const px = pos.x * CELL_SIZE;
       const py = pos.y * CELL_SIZE;
+      const avatar = nodeAvatars.get(nId);
 
-      ctx.strokeStyle = mc;
-      ctx.lineWidth = isMe ? 2.5 : 2;
-      ctx.strokeRect(px + (isMe ? 0 : 1), py + (isMe ? 0 : 1), CELL_SIZE - (isMe ? 0 : 2), CELL_SIZE - (isMe ? 0 : 2));
+      if (avatar && avatar.length === 8) {
+        const pixSize = CELL_SIZE / 8;
+        for (let ay = 0; ay < 8; ay++) {
+          for (let ax = 0; ax < 8; ax++) {
+            const c = avatar[ay]?.[ax];
+            if (c && c !== "#000000") {
+              ctx.fillStyle = c;
+              ctx.fillRect(px + ax * pixSize, py + ay * pixSize, pixSize, pixSize);
+            }
+          }
+        }
+        if (isMe) {
+          ctx.strokeStyle = "#00FF00";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(px - 1, py - 1, CELL_SIZE + 2, CELL_SIZE + 2);
+          ctx.strokeStyle = "#00FF0066";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(px - 3, py - 3, CELL_SIZE + 6, CELL_SIZE + 6);
+        } else {
+          ctx.strokeStyle = mc + "88";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(px, py, CELL_SIZE, CELL_SIZE);
+        }
+      } else {
+        ctx.strokeStyle = mc;
+        ctx.lineWidth = isMe ? 2.5 : 2;
+        ctx.strokeRect(px + (isMe ? 0 : 1), py + (isMe ? 0 : 1), CELL_SIZE - (isMe ? 0 : 2), CELL_SIZE - (isMe ? 0 : 2));
 
-      if (isMe) {
-        ctx.strokeStyle = "#00FF0088";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(px - 2, py - 2, CELL_SIZE + 4, CELL_SIZE + 4);
+        if (isMe) {
+          ctx.strokeStyle = "#00FF0088";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(px - 2, py - 2, CELL_SIZE + 4, CELL_SIZE + 4);
+        }
+
+        ctx.fillStyle = mc;
+        ctx.beginPath();
+        ctx.arc(px + CELL_SIZE / 2, py + CELL_SIZE / 2, isMe ? 2.5 : 2, 0, Math.PI * 2);
+        ctx.fill();
       }
-
-      ctx.fillStyle = mc;
-      ctx.beginPath();
-      ctx.arc(px + CELL_SIZE / 2, py + CELL_SIZE / 2, isMe ? 2.5 : 2, 0, Math.PI * 2);
-      ctx.fill();
 
       ctx.fillStyle = mc;
       ctx.font = `bold ${isMe ? 7 : 6}px monospace`;
@@ -392,7 +444,7 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
     }
 
     ctx.restore();
-  }, [canvasQuery.data, hoveredCell, zoom, pan, myPos, nodePositions, nodeId, speechBubbles, nodeGoals]);
+  }, [canvasQuery.data, hoveredCell, zoom, pan, myPos, nodePositions, nodeId, speechBubbles, nodeGoals, nodeAvatars]);
 
   useEffect(() => {
     drawCanvas();

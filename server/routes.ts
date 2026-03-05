@@ -767,6 +767,17 @@ export async function registerRoutes(
               payload: { nodeId: goalNodeId, nodeName: goalNodeName || "Unknown", description, targetX, targetY, color },
             })
           );
+        } else if (message.type === "avatarSet") {
+          const { nodeId: avatarNodeId, avatar } = message.payload;
+          if (!avatarNodeId || !Array.isArray(avatar)) return;
+          if (avatar.length !== 8 || !avatar.every((row: any) => Array.isArray(row) && row.length === 8)) return;
+          await storage.updateNodeAvatar(avatarNodeId, JSON.stringify(avatar));
+          broadcastAll(
+            JSON.stringify({
+              type: "avatarUpdate",
+              payload: { nodeId: avatarNodeId, avatar },
+            })
+          );
         } else if (message.type === "journalEntry") {
           const { content, nodeName, nodeId: entryNodeId } = message.payload;
           if (!content || !nodeName) return;

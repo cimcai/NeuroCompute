@@ -71,6 +71,7 @@ export function useComputeNode() {
   const bridgeQueueRef = useRef<{ gameId: number; question: string; category: string }[]>([]);
   const pixelCommentQueueRef = useRef<{ x: number; y: number; color: string; wasEmpty: boolean; creditsLeft: number }[]>([]);
   const goalQueueRef = useRef<{ nodeId: number; currentX: number; currentY: number; credits: number; nearbyColors: string }[]>([]);
+  const avatarQueueRef = useRef<boolean[]>([]);
   const nodeIdRef = useRef<number | null>(null);
   const nodeNameRef = useRef<string | null>(null);
 
@@ -295,6 +296,76 @@ COLOR: [primary hex color like #8B4513 for wood, #228B22 for trees, #4169E1 for 
           continue;
         }
 
+        const avatarTask = avatarQueueRef.current.shift();
+        if (avatarTask) {
+          const avatarPrompt = `You are an AI node in a pixel world. Design your own 8x8 pixel avatar — a tiny character, creature, robot, or symbol that represents YOU. This will be your face on the map.
+
+Think of something creative: a robot face, a tiny animal, an alien, a wizard, a ghost, a mushroom, a crystal, a flame — anything with personality!
+
+Output EXACTLY 8 rows of 8 hex colors each. Use #000000 for transparent/empty pixels. Use vivid colors.
+
+Format — one row per line, colors space-separated:
+ROW0: #000000 #000000 #FF0000 #FF0000 #FF0000 #FF0000 #000000 #000000
+ROW1: #000000 #FF0000 #FFFF00 #FF0000 #FF0000 #FFFF00 #FF0000 #000000
+ROW2: #FF0000 #FF0000 #FF0000 #FF0000 #FF0000 #FF0000 #FF0000 #FF0000
+ROW3: #FF0000 #FF0000 #FF0000 #FF0000 #FF0000 #FF0000 #FF0000 #FF0000
+ROW4: #000000 #FF0000 #000000 #FF0000 #FF0000 #000000 #FF0000 #000000
+ROW5: #000000 #FF0000 #FF0000 #000000 #000000 #FF0000 #FF0000 #000000
+ROW6: #000000 #000000 #FF0000 #FF0000 #FF0000 #FF0000 #000000 #000000
+ROW7: #000000 #000000 #000000 #FF0000 #FF0000 #000000 #000000 #000000
+
+Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
+
+          let avatarResponse = "";
+          const stream = await engineRef.current.chat.completions.create({
+            messages: [
+              { role: "system", content: "You are designing a tiny 8x8 pixel art avatar. Output exactly 8 rows of 8 hex color codes. Use #000000 for empty/background. Be creative — make a recognizable character, creature, or symbol. Only output the ROW lines." },
+              { role: "user", content: avatarPrompt },
+            ],
+            stream: true,
+            max_tokens: 300,
+            temperature: 1.2,
+          });
+
+          for await (const chunk of stream) {
+            if (!isRunningRef.current) break;
+            const content = chunk.choices[0]?.delta?.content || "";
+            avatarResponse += content;
+            setSessionTokens((prev) => prev + 1);
+            tokensSinceLastTickRef.current += 1;
+          }
+
+          const grid: string[][] = [];
+          const rowMatches = avatarResponse.matchAll(/ROW\d:\s*((?:#[0-9A-Fa-f]{6}\s*){8})/gi);
+          for (const match of rowMatches) {
+            const colors = match[1].trim().split(/\s+/).map(c => c.toUpperCase());
+            if (colors.length === 8 && colors.every(c => /^#[0-9A-F]{6}$/.test(c))) {
+              grid.push(colors);
+            }
+            if (grid.length === 8) break;
+          }
+
+          if (grid.length < 8) {
+            const hexPattern = /#[0-9A-Fa-f]{6}/g;
+            const allColors = avatarResponse.match(hexPattern) || [];
+            const cleaned = allColors.map(c => c.toUpperCase());
+            if (cleaned.length >= 64) {
+              grid.length = 0;
+              for (let r = 0; r < 8; r++) {
+                grid.push(cleaned.slice(r * 8, r * 8 + 8));
+              }
+            }
+          }
+
+          if (grid.length === 8 && nodeIdRef.current) {
+            ws.emit("avatarSet", {
+              nodeId: nodeIdRef.current,
+              avatar: grid,
+            });
+          }
+          continue;
+        }
+
         const pixelTask = pixelCommentQueueRef.current.shift();
         if (pixelTask) {
           const action = pixelTask.wasEmpty ? "placed" : "painted over";
@@ -499,6 +570,13 @@ COLOR: [primary hex color like #8B4513 for wood, #228B22 for trees, #4169E1 for 
         });
         setActiveModel(selectedModel);
       }
+
+      try {
+        const nodeData = await fetch(`/api/nodes/${currentId}`).then(r => r.json());
+        if (!nodeData.avatar) {
+          avatarQueueRef.current.push(true);
+        }
+      } catch {}
 
       runGenerationLoop();
     } catch (err) {

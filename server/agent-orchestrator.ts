@@ -34,6 +34,90 @@ interface ParsedGoal {
   setAt: number;
 }
 
+const AVATAR_TEMPLATES = [
+  [ // Robot face
+    "_ _ C C C C _ _",
+    "_ C C C C C C _",
+    "C C E C C E C C",
+    "C C C C C C C C",
+    "C C C _ _ C C C",
+    "C C C C C C C C",
+    "_ C _ C C _ C _",
+    "_ _ C C C C _ _",
+  ],
+  [ // Cat
+    "_ C _ _ _ _ C _",
+    "C C C _ _ C C C",
+    "C E C C C E C C",
+    "C C C N N C C C",
+    "C C _ C C _ C C",
+    "_ C C C C C C _",
+    "_ _ C C C C _ _",
+    "_ _ _ C C _ _ _",
+  ],
+  [ // Ghost
+    "_ _ C C C C _ _",
+    "_ C C C C C C _",
+    "C C E C C E C C",
+    "C C C C C C C C",
+    "C C C C C C C C",
+    "C C C C C C C C",
+    "C _ C C C C _ C",
+    "_ _ C _ _ C _ _",
+  ],
+  [ // Tree
+    "_ _ _ C C _ _ _",
+    "_ _ C C C C _ _",
+    "_ C C C C C C _",
+    "C C C C C C C C",
+    "_ C C C C C C _",
+    "_ _ _ B B _ _ _",
+    "_ _ _ B B _ _ _",
+    "_ _ B B B B _ _",
+  ],
+  [ // Star
+    "_ _ _ C _ _ _ _",
+    "_ _ _ C C _ _ _",
+    "C C C C C C C C",
+    "_ C C C C C C _",
+    "_ _ C C C C _ _",
+    "_ C C _ _ C C _",
+    "C C _ _ _ _ C C",
+    "C _ _ _ _ _ _ C",
+  ],
+  [ // Heart
+    "_ C C _ _ C C _",
+    "C C C C C C C C",
+    "C C C C C C C C",
+    "C C C C C C C C",
+    "_ C C C C C C _",
+    "_ _ C C C C _ _",
+    "_ _ _ C C _ _ _",
+    "_ _ _ _ _ _ _ _",
+  ],
+];
+
+function generateFallbackAvatar(): string[][] {
+  const template = AVATAR_TEMPLATES[Math.floor(Math.random() * AVATAR_TEMPLATES.length)];
+  const palettes = [
+    { C: "#00FFFF", E: "#FFFFFF", N: "#FF69B4", B: "#8B4513" },
+    { C: "#FF00FF", E: "#FFFF00", N: "#000000", B: "#8B4513" },
+    { C: "#00FF00", E: "#FF0000", N: "#FFFFFF", B: "#654321" },
+    { C: "#FF6600", E: "#00FFFF", N: "#FFFFFF", B: "#8B4513" },
+    { C: "#4169E1", E: "#FFFF00", N: "#FF69B4", B: "#8B4513" },
+    { C: "#FFD700", E: "#FF0000", N: "#000000", B: "#654321" },
+    { C: "#FF4444", E: "#FFFFFF", N: "#000000", B: "#8B4513" },
+    { C: "#9966FF", E: "#00FF00", N: "#FF69B4", B: "#654321" },
+  ];
+  const palette = palettes[Math.floor(Math.random() * palettes.length)];
+  return template.map(row =>
+    row.split(" ").map(c => {
+      if (c === "_") return "#000000";
+      return (palette as any)[c] || "#FFFFFF";
+    })
+  );
+}
+
 let lastSeenEntryId = 0;
 let activeBridgeSessionId: string | null = null;
 
@@ -213,6 +297,14 @@ async function runPixelAgent(config: OrchestratorConfig) {
 
     for (const node of activeNodes) {
       const nodeName = node.displayName || node.name;
+
+      if (!node.avatar) {
+        const fallbackAvatar = generateFallbackAvatar();
+        await storage.updateNodeAvatar(node.id, JSON.stringify(fallbackAvatar));
+        config.broadcastAll(JSON.stringify({ type: "avatarUpdate", payload: { nodeId: node.id, avatar: fallbackAvatar } }));
+        console.log(`[orchestrator] Assigned fallback avatar to ${nodeName}`);
+      }
+
       try {
         const goal = parseGoal(node.pixelGoal);
 
