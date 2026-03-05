@@ -261,6 +261,14 @@ export async function registerRoutes(
         }
         since = parsed;
       }
+      let before: Date | null = null;
+      if (req.query.before) {
+        const parsed = new Date(req.query.before as string);
+        if (isNaN(parsed.getTime())) {
+          return res.status(400).json({ message: "Invalid 'before' timestamp — use ISO 8601 format" });
+        }
+        before = parsed;
+      }
       const type = req.query.type as string | undefined;
       if (type && type !== "chat" && type !== "journal") {
         return res.status(400).json({ message: "Invalid 'type' — must be 'chat' or 'journal'" });
@@ -288,6 +296,7 @@ export async function registerRoutes(
       for (const m of msgs) {
         const ts = m.createdAt.toISOString();
         if (since && m.createdAt < since) continue;
+        if (before && m.createdAt >= before) continue;
         const node = m.nodeId ? nodeMap.get(m.nodeId) : null;
         unified.push({
           id: m.id,
@@ -303,6 +312,7 @@ export async function registerRoutes(
       for (const j of journal) {
         const ts = j.createdAt.toISOString();
         if (since && j.createdAt < since) continue;
+        if (before && j.createdAt >= before) continue;
         const node = j.nodeId ? nodeMap.get(j.nodeId) : null;
         unified.push({
           id: j.id,
@@ -314,8 +324,8 @@ export async function registerRoutes(
         });
       }
 
-      unified.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-      const trimmed = unified.slice(-limit);
+      unified.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      const trimmed = unified.slice(0, limit).reverse();
 
       res.json({
         count: trimmed.length,
