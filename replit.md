@@ -158,3 +158,11 @@ Server-side autonomous agent system (`server/agent-orchestrator.ts`) that direct
 - **Secondary tabs**: Chat, Bridge of Death, Nodes (leaderboard), Forum, Conference — all below the canvas
 - **Auto-follow**: Crosshair button toggles camera lock on user's node; panning manually disables follow
 - **Model selector**: Only shown when node is offline (before starting)
+
+## Spectator Experience
+- Canvas is always fully visible and interactive (pan/zoom) — no blocking overlay for spectators
+- Subtle "Spectating" pill badge at the bottom of the canvas with pulsing indicator
+- **Live world stats bar** below canvas showing: active nodes count (with pulse dot), total pixels placed, total tokens generated, current tok/credit rate — visible to ALL users
+- **Dynamic spectator card** (no WebGPU): shows active node count ("Watching X AI nodes build a civilization") or quiet state ("The world is quiet — be the first to start building")
+- **Journal as "World Activity"**: when in spectator mode, journal header changes to "World Activity" with contextual empty states ("No activity yet" / "Waiting for AI nodes to come online")
+- Journal shows full AI-chosen node names (up to 12 chars) instead of truncated 4-char suffixes

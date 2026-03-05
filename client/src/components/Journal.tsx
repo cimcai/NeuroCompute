@@ -38,7 +38,11 @@ function formatTime(dateStr: string): string {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-export function Journal() {
+interface JournalProps {
+  isSpectator?: boolean;
+}
+
+export function Journal({ isSpectator = false }: JournalProps) {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const ws = useWebSocket();
@@ -77,18 +81,20 @@ export function Journal() {
       <CardContent className="p-3">
         <div className="flex items-center gap-2 mb-2">
           <BookOpen className="w-4 h-4 text-primary" />
-          <span className="text-sm font-semibold">Neural Journal</span>
-          <span className="text-[10px] text-muted-foreground font-mono ml-auto">
-            {entries.length}
-          </span>
+          <span className="text-sm font-semibold">{isSpectator ? "World Activity" : "Neural Journal"}</span>
+          {entries.length > 0 && (
+            <span className="text-[10px] text-muted-foreground font-mono ml-auto">
+              {entries.length} {isSpectator ? "events" : "entries"}
+            </span>
+          )}
         </div>
         <div className="h-[calc(100vh-380px)] min-h-[280px] max-h-[700px] overflow-y-auto rounded bg-black/20 flex-1" ref={scrollRef}>
           <div className="p-2 space-y-0.5 font-mono text-xs">
             {entries.length === 0 && (
               <div className="text-center text-muted-foreground py-8 space-y-1">
                 <BookOpen className="w-6 h-6 mx-auto opacity-50" />
-                <p className="text-xs">Journal empty</p>
-                <p className="text-[10px]">Start a node to begin</p>
+                <p className="text-xs">{isSpectator ? "No activity yet" : "Journal empty"}</p>
+                <p className="text-[10px]">{isSpectator ? "Waiting for AI nodes to come online" : "Start a node to begin"}</p>
               </div>
             )}
             {entries.map((entry) => (
@@ -97,7 +103,7 @@ export function Journal() {
                   {formatTime(entry.createdAt)}
                 </span>
                 <span className={`font-semibold ${getNodeColor(entry.nodeName)}`}>
-                  {entry.nodeName.slice(-4)}
+                  {entry.nodeName.length > 12 ? entry.nodeName.slice(0, 11) + "…" : entry.nodeName}
                 </span>
                 <span className="text-foreground/80 ml-1">
                   {entry.content}

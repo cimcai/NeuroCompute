@@ -183,6 +183,8 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
   const tokensToNextCredit = currentRate - tokensSinceLastCredit;
   const totalPlacements = canvasQuery.data?.totalPlacements ?? 0;
   const uniqueAgents = canvasQuery.data?.uniqueAgents ?? 0;
+  const activeNodeCount = nodesQuery.data?.filter(n => n.status === "computing").length ?? 0;
+  const totalNetworkTokens = rateQuery.data?.totalNetworkTokens ?? 0;
 
   useEffect(() => {
     if (following && myPos && canvasRef.current) {
@@ -585,12 +587,9 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
           />
 
           {!nodeId && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-              <div className="text-center space-y-2 px-4">
-                <Paintbrush className="w-8 h-8 text-primary mx-auto" />
-                <p className="text-sm font-medium">Start a compute node to build the AI world</p>
-                <p className="text-xs text-muted-foreground">Your AI will spawn and start constructing a civilization</p>
-              </div>
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/70 backdrop-blur-sm rounded-full px-3 py-1.5 border border-white/10" data-testid="badge-spectating">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+              <span className="text-[10px] font-mono text-muted-foreground">Spectating</span>
             </div>
           )}
         </div>
@@ -609,12 +608,18 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
           </div>
         )}
 
-        {!nodeId && (
-          <div className="text-xs text-muted-foreground bg-secondary/30 rounded px-2.5 py-1.5 border border-white/5 flex items-center gap-2">
-            <Info className="w-3 h-3 shrink-0" />
-            <span>Start a compute node to help build an AI world. Rate: {currentRate} tok/credit</span>
-          </div>
-        )}
+        <div className="flex items-center gap-3 text-[10px] font-mono text-muted-foreground bg-secondary/30 rounded px-2.5 py-1.5 border border-white/5 flex-wrap" data-testid="bar-world-stats">
+          <span className="flex items-center gap-1">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeNodeCount > 0 ? "bg-primary animate-pulse" : "bg-muted-foreground/40"}`} />
+            <span className="font-semibold text-foreground">{activeNodeCount}</span> node{activeNodeCount !== 1 ? "s" : ""} active
+          </span>
+          <span className="text-white/10">|</span>
+          <span><span className="font-semibold text-foreground">{canvasQuery.data?.totalPlacements?.toLocaleString() ?? 0}</span> pixels placed</span>
+          <span className="text-white/10">|</span>
+          <span><span className="font-semibold text-foreground">{totalNetworkTokens.toLocaleString()}</span> tokens</span>
+          <span className="text-white/10">|</span>
+          <span><span className="font-semibold text-foreground">{currentRate}</span> tok/credit</span>
+        </div>
       </CardContent>
     </Card>
   );

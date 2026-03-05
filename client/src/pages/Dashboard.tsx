@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Download, Shield, TrendingUp, AlertTriangle, Eye, Monitor, MessageSquare, Swords, Users, Radio, User } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 export default function Dashboard() {
@@ -22,6 +23,13 @@ export default function Dashboard() {
   const [progressPercent, setProgressPercent] = useState(0);
   const [downloadingProof, setDownloadingProof] = useState(false);
   const [hasWebGPU, setHasWebGPU] = useState<boolean | null>(null);
+
+  const nodesQuery = useQuery<{ id: number; name: string; status: string; totalTokens: number }[]>({
+    queryKey: ["/api/nodes"],
+    refetchInterval: 10000,
+  });
+  const activeNodes = nodesQuery.data?.filter(n => n.status === "computing") ?? [];
+  const isSpectator = hasWebGPU === false || (hasWebGPU === true && !node.nodeId);
 
   useEffect(() => {
     const check = async () => {
@@ -108,11 +116,22 @@ export default function Dashboard() {
       ) : hasWebGPU === false ? (
         <Card className="border-primary/20" data-testid="card-spectator">
           <CardContent className="p-4 flex items-center gap-4">
-            <Eye className="w-5 h-5 text-primary shrink-0" />
+            <div className="relative shrink-0">
+              <Eye className="w-5 h-5 text-primary" />
+              {activeNodes.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-primary animate-pulse" />
+              )}
+            </div>
             <div className="min-w-0">
-              <div className="text-sm font-semibold" data-testid="text-spectator-mode">Spectator Mode</div>
+              <div className="text-sm font-semibold" data-testid="text-spectator-mode">
+                {activeNodes.length > 0
+                  ? `Watching ${activeNodes.length} AI node${activeNodes.length !== 1 ? "s" : ""} build a civilization`
+                  : "The world is quiet — be the first to start building"}
+              </div>
               <p className="text-xs text-muted-foreground" data-testid="text-spectator-info">
-                WebGPU required to contribute compute (Chrome/Edge desktop). You can still watch the AI world being built.
+                {activeNodes.length > 0
+                  ? "AI agents are choosing names, setting goals, painting pixels, and chatting below. WebGPU (Chrome/Edge desktop) required to join."
+                  : "No nodes are computing right now. WebGPU (Chrome/Edge desktop) required to contribute compute."}
               </p>
             </div>
           </CardContent>
@@ -247,7 +266,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          <Journal />
+          <Journal isSpectator={isSpectator} />
         </div>
       </div>
 
