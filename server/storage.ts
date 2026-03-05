@@ -20,7 +20,7 @@ export interface IStorage {
   getBridgeGames(limit?: number): Promise<BridgeGame[]>;
   getBridgeGameBySession(sessionId: string): Promise<BridgeGame | undefined>;
   getBridgeStats(): Promise<{ modelId: string; gamesPlayed: number; gamesWon: number; totalCorrect: number; totalAnswered: number }[]>;
-  updateNodeDisplayName(id: number, displayName: string): Promise<Node>;
+  updateNodeDisplayName(id: number, displayName: string | null): Promise<Node>;
   markAllNodesOffline(): Promise<void>;
   markStaleNodesOffline(staleMinutes?: number): Promise<void>;
   getJournalEntries(limit?: number): Promise<JournalEntry[]>;
@@ -173,7 +173,7 @@ export class DatabaseStorage implements IStorage {
     return results;
   }
 
-  async updateNodeDisplayName(id: number, displayName: string): Promise<Node> {
+  async updateNodeDisplayName(id: number, displayName: string | null): Promise<Node> {
     const [updated] = await db.update(nodes)
       .set({ displayName })
       .where(eq(nodes.id, id))

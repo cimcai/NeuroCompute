@@ -112,7 +112,7 @@ async function runBridgeAgent(config: OrchestratorConfig) {
     }
 
     const node = active[Math.floor(Math.random() * active.length)];
-    const playerName = `NeuroCompute-${node.name}`;
+    const playerName = `NeuroCompute-${node.displayName || node.name}`;
     console.log(`[orchestrator] Bridge agent: starting game for ${playerName}`);
 
     const session = await cimc.startBridge(playerName);
@@ -212,6 +212,7 @@ async function runPixelAgent(config: OrchestratorConfig) {
     }
 
     for (const node of activeNodes) {
+      const nodeName = node.displayName || node.name;
       try {
         const goal = parseGoal(node.pixelGoal);
 
@@ -261,7 +262,7 @@ async function runPixelAgent(config: OrchestratorConfig) {
             config.broadcastAll(
               JSON.stringify({
                 type: "nodeGoalSet",
-                payload: { nodeId: node.id, nodeName: node.name, description: fallbackGoal.description, targetX: fallbackGoal.targetX, targetY: fallbackGoal.targetY, color: fallbackGoal.color },
+                payload: { nodeId: node.id, nodeName, description: fallbackGoal.description, targetX: fallbackGoal.targetX, targetY: fallbackGoal.targetY, color: fallbackGoal.color },
               })
             );
           }
@@ -274,14 +275,14 @@ async function runPixelAgent(config: OrchestratorConfig) {
             config.broadcastAll(
               JSON.stringify({
                 type: "nodeMoved",
-                payload: { nodeId: node.id, nodeName: node.name, x: newX, y: newY },
+                payload: { nodeId: node.id, nodeName, x: newX, y: newY },
               })
             );
           }
 
           if (node.pixelCredits >= 1) {
             const color = PIXEL_COLORS[Math.floor(Math.random() * PIXEL_COLORS.length)];
-            await placePixelForNode(config, node, newX, newY, color, canvasData);
+            await placePixelForNode(config, node, nodeName, newX, newY, color, canvasData);
           }
           continue;
         }
@@ -290,11 +291,11 @@ async function runPixelAgent(config: OrchestratorConfig) {
 
         if (atTarget) {
           if (node.pixelCredits >= 1) {
-            await placePixelForNode(config, node, node.pixelX, node.pixelY, goal.color, canvasData);
+            await placePixelForNode(config, node, nodeName, node.pixelX, node.pixelY, goal.color, canvasData);
           }
           await storage.updateNodeGoal(node.id, null);
           config.broadcastAll(JSON.stringify({ type: "nodeGoalCleared", payload: { nodeId: node.id } }));
-          console.log(`[orchestrator] ${node.name} reached goal target (${goal.targetX},${goal.targetY}), clearing goal`);
+          console.log(`[orchestrator] ${nodeName} reached goal target (${goal.targetX},${goal.targetY}), clearing goal`);
           continue;
         }
 
@@ -307,18 +308,18 @@ async function runPixelAgent(config: OrchestratorConfig) {
           config.broadcastAll(
             JSON.stringify({
               type: "nodeMoved",
-              payload: { nodeId: node.id, nodeName: node.name, x: newX, y: newY },
+              payload: { nodeId: node.id, nodeName, x: newX, y: newY },
             })
           );
         }
 
         if (node.pixelCredits >= 1) {
-          await placePixelForNode(config, node, newX, newY, goal.color, canvasData);
+          await placePixelForNode(config, node, nodeName, newX, newY, goal.color, canvasData);
         }
 
       } catch (err: any) {
         if (err.message === "Not enough pixel credits") continue;
-        console.error(`[orchestrator] Pixel agent error for ${node.name}:`, err);
+        console.error(`[orchestrator] Pixel agent error for ${nodeName}:`, err);
       }
     }
   } catch (err) {
@@ -329,6 +330,7 @@ async function runPixelAgent(config: OrchestratorConfig) {
 async function placePixelForNode(
   config: OrchestratorConfig,
   node: { id: number; name: string; pixelX: number; pixelY: number },
+  nodeName: string,
   x: number,
   y: number,
   color: string,
@@ -336,12 +338,12 @@ async function placePixelForNode(
 ) {
   const wasEmpty = !canvasData?.grid?.[y]?.[x] || canvasData.grid[y][x] === "#000000";
   const updated = await storage.spendPixelCredit(node.id);
-  const agent = `NeuroCompute-${node.name}`;
+  const agent = `NeuroCompute-${nodeName}`;
 
   await cimc.placePixel(x, y, color, agent);
 
   console.log(
-    `[orchestrator] Pixel agent: ${node.name} at (${x},${y}), placed ${color} — ${updated.pixelCredits} credits left`
+    `[orchestrator] Pixel agent: ${nodeName} at (${x},${y}), placed ${color} — ${updated.pixelCredits} credits left`
   );
 
   config.broadcastAll(
@@ -351,7 +353,7 @@ async function placePixelForNode(
         x,
         y,
         color,
-        agent: node.name,
+        agent: nodeName,
         nodeId: node.id,
         pixelCredits: updated.pixelCredits,
       },
@@ -366,7 +368,7 @@ async function placePixelForNode(
   if (!sent) {
     const fallback = `Placed ${color} at (${x},${y}). ${updated.pixelCredits} credits remaining.`;
     const entry = await storage.createJournalEntry({
-      nodeName: node.name,
+      nodeName,
       nodeId: node.id,
       content: fallback,
     });

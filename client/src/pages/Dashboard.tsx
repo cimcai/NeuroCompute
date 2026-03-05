@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Download, Shield, TrendingUp, AlertTriangle, Eye, Monitor, MessageSquare, Swords, Users, Radio } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Download, Shield, TrendingUp, AlertTriangle, Eye, Monitor, MessageSquare, Swords, Users, Radio, User } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function Dashboard() {
@@ -128,7 +129,7 @@ export default function Dashboard() {
                 {node.status === "computing" && <span className="w-2 h-2 rounded-full bg-primary shadow-[0_0_10px_rgba(0,255,255,1)] animate-pulse shrink-0" />}
                 {node.status === "error" && <span className="w-2 h-2 rounded-full bg-destructive shrink-0" />}
                 <span className="text-sm font-mono font-semibold truncate" data-testid="text-node-name">
-                  {node.nodeName || "No Node"}
+                  {node.chatName || node.nodeName || "No Node"}
                 </span>
                 <span className="text-xs text-muted-foreground uppercase" data-testid="text-node-status">{node.status}</span>
               </div>
@@ -185,21 +186,34 @@ export default function Dashboard() {
       )}
 
       {hasWebGPU === true && (node.status === "offline" || node.status === "error") && (
-        <div className="flex items-center gap-3">
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 max-w-[240px]">
+              <User className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                data-testid="input-display-name"
+                placeholder="Your node name (optional)"
+                value={node.displayName || ""}
+                onChange={(e) => node.setDisplayName(e.target.value.slice(0, 32) || null)}
+                className="pl-8 h-9 text-sm font-mono bg-secondary/30 border-white/10 focus:border-primary/50"
+                maxLength={32}
+              />
+            </div>
+            <Card className="border-white/5 bg-secondary/30 flex-1" data-testid="card-network-rate">
+              <CardContent className="p-3 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Network Rate</span>
+                <span className="text-sm font-mono font-bold text-fuchsia-400" data-testid="text-current-rate">
+                  {node.currentRate} <span className="text-xs text-muted-foreground font-normal">tok/credit</span>
+                </span>
+              </CardContent>
+            </Card>
+          </div>
           <ModelSelector
             selectedModel={node.selectedModel}
             onSelectModel={node.setSelectedModel}
             activeModel={node.activeModel}
             disabled={node.status === "loading" || node.status === "computing"}
           />
-          <Card className="border-white/5 bg-secondary/30 flex-1" data-testid="card-network-rate">
-            <CardContent className="p-3 flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Network Rate</span>
-              <span className="text-sm font-mono font-bold text-fuchsia-400" data-testid="text-current-rate">
-                {node.currentRate} <span className="text-xs text-muted-foreground font-normal">tok/credit</span>
-              </span>
-            </CardContent>
-          </Card>
         </div>
       )}
 

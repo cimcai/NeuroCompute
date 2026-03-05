@@ -45,8 +45,12 @@ export async function registerRoutes(
     try {
       const id = Number(req.params.id);
       const { displayName } = req.body;
-      if (!displayName || typeof displayName !== "string" || displayName.trim().length === 0) {
-        return res.status(400).json({ message: "Display name is required" });
+      if (displayName === null || displayName === undefined || (typeof displayName === "string" && displayName.trim().length === 0)) {
+        const node = await storage.updateNodeDisplayName(id, null);
+        return res.json(node);
+      }
+      if (typeof displayName !== "string") {
+        return res.status(400).json({ message: "Display name must be a string" });
       }
       const trimmed = displayName.trim().slice(0, 32);
       const node = await storage.updateNodeDisplayName(id, trimmed);
@@ -515,10 +519,11 @@ export async function registerRoutes(
       const x = currentNode.pixelX;
       const y = currentNode.pixelY;
       const node = await storage.spendPixelCredit(Number(nodeId));
-      const result = await cimc.placePixel(x, y, color, `NeuroCompute-${node.name}`);
+      const agentName = currentNode.displayName || node.name;
+      const result = await cimc.placePixel(x, y, color, `NeuroCompute-${agentName}`);
       broadcastAll(JSON.stringify({
         type: "pixelPlaced",
-        payload: { x, y, color, agent: node.name, nodeId: node.id, pixelCredits: node.pixelCredits },
+        payload: { x, y, color, agent: agentName, nodeId: node.id, pixelCredits: node.pixelCredits },
       }));
       res.json({ pixel: result, node });
     } catch (err: any) {
@@ -621,7 +626,7 @@ export async function registerRoutes(
           const node = await storage.getNode(nodeId);
           if (node) {
             broadcast(
-              JSON.stringify({ type: "nodeJoined", payload: { id: node.id, name: node.name } }),
+              JSON.stringify({ type: "nodeJoined", payload: { id: node.id, name: node.displayName || node.name } }),
               socket
             );
           }
