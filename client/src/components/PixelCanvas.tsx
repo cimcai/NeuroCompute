@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { Grid3X3, Coins, Paintbrush, Minus, Plus, RotateCcw, MapPin, Info } from "lucide-react";
+import { Coins, Paintbrush, Minus, Plus, RotateCcw, MapPin, Info, Crosshair } from "lucide-react";
 
 const CANVAS_SIZE = 32;
 const CELL_SIZE = 16;
@@ -33,16 +33,18 @@ interface NodeGoal {
 
 interface PixelCanvasProps {
   nodeId: number | null;
+  autoFollow?: boolean;
 }
 
-export function PixelCanvas({ nodeId }: PixelCanvasProps) {
+export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
   const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number } | null>(null);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(autoFollow ? 2.5 : 1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [nodePositions, setNodePositions] = useState<Map<number, { x: number; y: number; name: string }>>(new Map());
   const [speechBubbles, setSpeechBubbles] = useState<SpeechBubble[]>([]);
   const [nodeGoals, setNodeGoals] = useState<Map<number, NodeGoal>>(new Map());
+  const [following, setFollowing] = useState(autoFollow);
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ws = useWebSocket();
@@ -155,6 +157,40 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
   const tokensToNextCredit = currentRate - tokensSinceLastCredit;
   const totalPlacements = canvasQuery.data?.totalPlacements ?? 0;
   const uniqueAgents = canvasQuery.data?.uniqueAgents ?? 0;
+
+  useEffect(() => {
+    if (following && myPos && canvasRef.current) {
+      const canvas = canvasRef.current;
+      const centerPixelX = myPos.x * CELL_SIZE + CELL_SIZE / 2;
+      const centerPixelY = myPos.y * CELL_SIZE + CELL_SIZE / 2;
+      const targetPanX = -(centerPixelX - canvas.width / 2) * zoom;
+      const targetPanY = -(centerPixelY - canvas.height / 2) * zoom;
+      setPan(prev => {
+        const dx = targetPanX - prev.x;
+        const dy = targetPanY - prev.y;
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return prev;
+        return {
+          x: prev.x + dx * 0.3,
+          y: prev.y + dy * 0.3,
+        };
+      });
+    }
+  }, [following, myPos, zoom]);
+
+  const centerOnNode = useCallback(() => {
+    if (myPos && canvasRef.current) {
+      const canvas = canvasRef.current;
+      const centerPixelX = myPos.x * CELL_SIZE + CELL_SIZE / 2;
+      const centerPixelY = myPos.y * CELL_SIZE + CELL_SIZE / 2;
+      setPan({
+        x: -(centerPixelX - canvas.width / 2) * zoom,
+        y: -(centerPixelY - canvas.height / 2) * zoom,
+      });
+      setFollowing(true);
+    }
+  }, [myPos, zoom]);
+
+  const myGoal = nodeId ? nodeGoals.get(nodeId) : null;
 
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -392,8 +428,9 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (e.button === 1 || e.button === 2) {
+    if (e.button === 0 || e.button === 1 || e.button === 2) {
       setIsPanning(true);
+      setFollowing(false);
       panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
     }
   };
@@ -402,7 +439,7 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
 
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     e.preventDefault();
-    setZoom((z) => Math.max(0.5, Math.min(4, z + (e.deltaY > 0 ? -0.2 : 0.2))));
+    setZoom((z) => Math.max(0.5, Math.min(6, z + (e.deltaY > 0 ? -0.3 : 0.3))));
   };
 
   const currentPixelColor = hoveredCell && canvasQuery.data?.grid
@@ -411,65 +448,67 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
 
   return (
     <Card className="overflow-hidden border-primary/20">
-      <CardContent className="p-6 space-y-4">
+      <CardContent className="p-3 space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Grid3X3 className="w-5 h-5 text-primary" />
-            <h3 className="text-lg font-semibold font-mono" data-testid="text-canvas-title">Pixel Canvas</h3>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20" data-testid="text-canvas-room">
-              Room 4
+            {myPos && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <MapPin className="w-3 h-3 text-green-400" />
+                <span className="font-mono text-green-400" data-testid="text-node-position">({myPos.x},{myPos.y})</span>
+              </div>
+            )}
+            {nodeId && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <Coins className="w-3 h-3 text-primary" />
+                <span className="font-mono text-primary" data-testid="text-pixel-credits">{credits}</span>
+              </div>
+            )}
+            {nodeId && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <Paintbrush className="w-3 h-3 text-fuchsia-400" />
+                <span className="font-mono text-fuchsia-400" data-testid="text-pixels-placed">{pixelsPlaced}</span>
+              </div>
+            )}
+            <span className="text-xs text-muted-foreground">
+              {totalPlacements} px / {uniqueAgents} agent{uniqueAgents !== 1 ? "s" : ""}
             </span>
           </div>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} data-testid="button-zoom-out">
+          <div className="flex items-center gap-0.5">
+            {nodeId && (
+              <Button
+                variant={following ? "default" : "ghost"}
+                size="icon"
+                className="h-6 w-6"
+                onClick={centerOnNode}
+                title="Follow your node"
+                aria-label="Follow your node"
+                data-testid="button-follow-node"
+              >
+                <Crosshair className="w-3 h-3" />
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setZoom((z) => Math.max(0.5, z - 0.5))} data-testid="button-zoom-out">
               <Minus className="w-3 h-3" />
             </Button>
-            <span className="text-xs font-mono w-10 text-center">{Math.round(zoom * 100)}%</span>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setZoom((z) => Math.min(4, z + 0.25))} data-testid="button-zoom-in">
+            <span className="text-[10px] font-mono w-8 text-center text-muted-foreground">{Math.round(zoom * 100)}%</span>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setZoom((z) => Math.min(6, z + 0.5))} data-testid="button-zoom-in">
               <Plus className="w-3 h-3" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} data-testid="button-zoom-reset">
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setFollowing(false); }} data-testid="button-zoom-reset">
               <RotateCcw className="w-3 h-3" />
             </Button>
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          <div className="flex items-center gap-2 bg-secondary/50 rounded-lg px-3 py-2 border border-white/5">
-            <Coins className="w-4 h-4 text-primary" />
-            <div>
-              <div className="text-lg font-mono font-bold text-primary" data-testid="text-pixel-credits">{credits}</div>
-              <div className="text-xs text-muted-foreground">Credits</div>
-            </div>
+        {myGoal && (
+          <div className="flex items-center gap-2 text-xs bg-secondary/50 rounded px-2.5 py-1.5 border border-white/5" data-testid="text-current-goal">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: myGoal.color }} />
+            <span className="text-muted-foreground truncate">
+              <span className="text-foreground font-medium">Goal:</span> {myGoal.description}
+              <span className="text-muted-foreground/60 ml-1">({myGoal.targetX},{myGoal.targetY})</span>
+            </span>
           </div>
-          <div className="flex items-center gap-2 bg-secondary/50 rounded-lg px-3 py-2 border border-white/5">
-            <Paintbrush className="w-4 h-4 text-fuchsia-400" />
-            <div>
-              <div className="text-lg font-mono font-bold text-fuchsia-400" data-testid="text-pixels-placed">{pixelsPlaced}</div>
-              <div className="text-xs text-muted-foreground">Placed</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 bg-secondary/50 rounded-lg px-3 py-2 border border-white/5">
-            <MapPin className="w-4 h-4 text-green-400" />
-            <div>
-              <div className="text-lg font-mono font-bold text-green-400" data-testid="text-node-position">
-                {myPos ? `(${myPos.x},${myPos.y})` : "—"}
-              </div>
-              <div className="text-xs text-muted-foreground">Position</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="text-xs text-muted-foreground bg-secondary/30 rounded-lg px-3 py-2 border border-white/5 flex items-center gap-2">
-          <Info className="w-3 h-3 shrink-0" />
-          <span>
-            {!nodeId
-              ? `Start a compute node to help build an AI world. Rate: ${currentRate} tok/credit`
-              : credits > 0
-                ? `Your AI is building a world. ${credits} credits ready for construction.`
-                : `${tokensToNextCredit} tokens to next credit (rate: ${currentRate} tok/credit)`}
-          </span>
-        </div>
+        )}
 
         <div className="relative rounded-lg overflow-hidden border border-white/10 bg-black/50" data-testid="canvas-grid">
           <canvas
@@ -477,7 +516,7 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
             width={CANVAS_SIZE * CELL_SIZE}
             height={CANVAS_SIZE * CELL_SIZE}
             className="w-full"
-            style={{ imageRendering: "pixelated", cursor: isPanning ? "grabbing" : "grab" }}
+            style={{ imageRendering: "pixelated", cursor: isPanning ? "grabbing" : "grab", aspectRatio: "1/1" }}
             onMouseMove={handleMouseMove}
             onMouseDown={handleMouseDown}
             onMouseUp={handleMouseUp}
@@ -487,31 +526,36 @@ export function PixelCanvas({ nodeId }: PixelCanvasProps) {
           />
 
           {!nodeId && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
               <div className="text-center space-y-2 px-4">
                 <Paintbrush className="w-8 h-8 text-primary mx-auto" />
                 <p className="text-sm font-medium">Start a compute node to build the AI world</p>
-                <p className="text-xs text-muted-foreground">Your AI will spawn at the center and start constructing a civilization</p>
+                <p className="text-xs text-muted-foreground">Your AI will spawn and start constructing a civilization</p>
               </div>
             </div>
           )}
         </div>
 
-
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>{totalPlacements} pixels placed by {uniqueAgents} agent{uniqueAgents !== 1 ? "s" : ""}</span>
-          {hoveredCell && (
-            <span className="font-mono flex items-center gap-2" data-testid="text-hover-coords">
+        {hoveredCell && (
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span className="font-mono" data-testid="text-hover-coords">
               ({hoveredCell.x}, {hoveredCell.y})
               {currentPixelColor && currentPixelColor !== "#000000" && (
-                <span className="flex items-center gap-1">
-                  <span className="w-3 h-3 rounded-sm border border-white/20" style={{ backgroundColor: currentPixelColor }} />
+                <span className="ml-2 inline-flex items-center gap-1">
+                  <span className="w-2.5 h-2.5 rounded-sm border border-white/20 inline-block" style={{ backgroundColor: currentPixelColor }} />
                   {currentPixelColor}
                 </span>
               )}
             </span>
-          )}
-        </div>
+          </div>
+        )}
+
+        {!nodeId && (
+          <div className="text-xs text-muted-foreground bg-secondary/30 rounded px-2.5 py-1.5 border border-white/5 flex items-center gap-2">
+            <Info className="w-3 h-3 shrink-0" />
+            <span>Start a compute node to help build an AI world. Rate: {currentRate} tok/credit</span>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

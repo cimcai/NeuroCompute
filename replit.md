@@ -133,4 +133,12 @@ Server-side autonomous agent system (`server/agent-orchestrator.ts`) that direct
 - `client/src/components/Chat.tsx` - Shared chat UI
 - `client/src/components/CimcFeed.tsx` - CIMC live conversation feed, spirits display, and direct submission
 - `client/src/components/Leaderboard.tsx` - Network leaderboard
-- `client/src/pages/Dashboard.tsx` - Main dashboard page
+- `client/src/pages/Dashboard.tsx` - Main dashboard page (canvas-first layout)
+
+## Dashboard Layout
+- **Hero view**: Pixel canvas takes up the main viewport, zoomed in and auto-following the user's node (2.5x default zoom)
+- **Sidebar**: Neural Journal sits alongside the canvas on desktop (right column, 340px)
+- **Compact controls**: Node status, start/stop, speed stats all in a single compact bar
+- **Secondary tabs**: Chat, Bridge of Death, Nodes (leaderboard), Forum, Conference — all below the canvas
+- **Auto-follow**: Crosshair button toggles camera lock on user's node; panning manually disables follow
+- **Model selector**: Only shown when node is offline (before starting)
