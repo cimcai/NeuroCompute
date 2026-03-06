@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { Coins, Paintbrush, Minus, Plus, RotateCcw, MapPin, Info, Crosshair } from "lucide-react";
+import { Coins, Paintbrush, Minus, Plus, RotateCcw, MapPin, Info, Crosshair, X, MessageCircle } from "lucide-react";
 
 const CANVAS_SIZE = 32;
 const CELL_SIZE = 16;
@@ -38,6 +38,13 @@ interface PixelCanvasProps {
   autoFollow?: boolean;
 }
 
+interface PixelHistoryEntry {
+  id: number;
+  nodeName: string;
+  content: string;
+  createdAt: string;
+}
+
 export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
   const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number } | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -48,7 +55,9 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
   const [nodeGoals, setNodeGoals] = useState<Map<number, NodeGoal>>(new Map());
   const [nodeAvatars, setNodeAvatars] = useState<Map<number, AvatarGrid>>(new Map());
   const [following, setFollowing] = useState(autoFollow);
+  const [selectedPixel, setSelectedPixel] = useState<{ x: number; y: number } | null>(null);
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  const mouseDownPosRef = useRef({ x: 0, y: 0 });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ws = useWebSocket();
 
@@ -71,6 +80,17 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
   const nodesQuery = useQuery<{ id: number; name: string; displayName: string | null; pixelX: number; pixelY: number; pixelGoal: string | null; avatar: string | null; status: string }[]>({
     queryKey: ["/api/nodes"],
     refetchInterval: 10000,
+  });
+
+  const pixelHistoryQuery = useQuery<PixelHistoryEntry[]>({
+    queryKey: ["/api/journal/pixel", selectedPixel?.x, selectedPixel?.y],
+    queryFn: async () => {
+      if (!selectedPixel) return [];
+      const res = await fetch(`/api/journal/pixel?x=${selectedPixel.x}&y=${selectedPixel.y}`);
+      if (!res.ok) throw new Error("Failed to fetch pixel history");
+      return res.json();
+    },
+    enabled: selectedPixel !== null,
   });
 
   useEffect(() => {
@@ -446,6 +466,15 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
       }
     });
 
+    if (selectedPixel) {
+      ctx.strokeStyle = "rgba(59,130,246,0.9)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(selectedPixel.x * CELL_SIZE - 1, selectedPixel.y * CELL_SIZE - 1, CELL_SIZE + 2, CELL_SIZE + 2);
+      ctx.strokeStyle = "rgba(255,255,255,0.5)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(selectedPixel.x * CELL_SIZE, selectedPixel.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+    }
+
     if (hoveredCell) {
       ctx.strokeStyle = "rgba(255,255,255,0.3)";
       ctx.lineWidth = 1;
@@ -453,7 +482,7 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
     }
 
     ctx.restore();
-  }, [canvasQuery.data, hoveredCell, zoom, pan, myPos, nodePositions, nodeId, speechBubbles, nodeGoals, nodeAvatars]);
+  }, [canvasQuery.data, hoveredCell, selectedPixel, zoom, pan, myPos, nodePositions, nodeId, speechBubbles, nodeGoals, nodeAvatars]);
 
   useEffect(() => {
     drawCanvas();
@@ -493,10 +522,27 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
       setIsPanning(true);
       setFollowing(false);
       panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+      mouseDownPosRef.current = { x: e.clientX, y: e.clientY };
     }
   };
 
-  const handleMouseUp = () => { if (isPanning) setIsPanning(false); };
+  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isPanning) {
+      const dx = Math.abs(e.clientX - mouseDownPosRef.current.x);
+      const dy = Math.abs(e.clientY - mouseDownPosRef.current.y);
+      if (dx < 4 && dy < 4) {
+        const cell = getCellFromEvent(e);
+        if (cell) {
+          if (selectedPixel && selectedPixel.x === cell.x && selectedPixel.y === cell.y) {
+            setSelectedPixel(null);
+          } else {
+            setSelectedPixel(cell);
+          }
+        }
+      }
+      setIsPanning(false);
+    }
+  };
 
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     e.preventDefault();
@@ -577,7 +623,7 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
             width={CANVAS_SIZE * CELL_SIZE}
             height={CANVAS_SIZE * CELL_SIZE}
             className="w-full"
-            style={{ imageRendering: "pixelated", cursor: isPanning ? "grabbing" : "grab", aspectRatio: "1/1" }}
+            style={{ imageRendering: "pixelated", cursor: isPanning ? "grabbing" : "crosshair", aspectRatio: "1/1" }}
             onMouseMove={handleMouseMove}
             onMouseDown={handleMouseDown}
             onMouseUp={handleMouseUp}
@@ -592,6 +638,42 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
               <span className="text-[10px] font-mono text-muted-foreground">Spectating</span>
             </div>
           )}
+
+          {selectedPixel && (
+            <div className="absolute top-2 right-2 w-64 max-h-[50%] bg-black/85 backdrop-blur-md rounded-lg border border-white/10 overflow-hidden flex flex-col" data-testid="panel-pixel-history">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 shrink-0">
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="w-3.5 h-3.5 text-primary" />
+                  <span className="text-xs font-mono text-foreground">
+                    Pixel ({selectedPixel.x}, {selectedPixel.y})
+                  </span>
+                  {canvasQuery.data?.grid?.[selectedPixel.y]?.[selectedPixel.x] && canvasQuery.data.grid[selectedPixel.y][selectedPixel.x] !== "#000000" && (
+                    <span className="w-3 h-3 rounded-sm border border-white/20" style={{ backgroundColor: canvasQuery.data.grid[selectedPixel.y][selectedPixel.x] }} />
+                  )}
+                </div>
+                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setSelectedPixel(null)} data-testid="button-close-pixel-history">
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+              <div className="overflow-y-auto flex-1 px-3 py-2 space-y-2">
+                {pixelHistoryQuery.isLoading ? (
+                  <p className="text-[10px] text-muted-foreground text-center py-4">Loading history...</p>
+                ) : !pixelHistoryQuery.data?.length ? (
+                  <p className="text-[10px] text-muted-foreground text-center py-4">No activity recorded for this pixel yet</p>
+                ) : (
+                  pixelHistoryQuery.data.map(entry => (
+                    <div key={entry.id} className="text-[10px] leading-relaxed" data-testid={`pixel-history-entry-${entry.id}`}>
+                      <span className="font-semibold text-primary">{entry.nodeName}</span>
+                      <span className="text-muted-foreground ml-1">{entry.content.replace(/🎨\s*\(\d+,\d+\)\s*/, "").replace(/🏗️\s*/, "")}</span>
+                      <span className="block text-[9px] text-muted-foreground/50 mt-0.5">
+                        {new Date(entry.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {hoveredCell && (
@@ -604,6 +686,7 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
                   {currentPixelColor}
                 </span>
               )}
+              <span className="ml-2 text-muted-foreground/50">click for history</span>
             </span>
           </div>
         )}

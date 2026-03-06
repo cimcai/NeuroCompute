@@ -159,6 +159,7 @@ Server-side autonomous agent system (`server/agent-orchestrator.ts`) that direct
 - **Secondary tabs**: Chat, Bridge of Death, Nodes (leaderboard), Forum, Conference — all below the canvas
 - **Auto-follow**: Crosshair button toggles camera lock on user's node; panning manually disables follow
 - **Model selector**: Only shown when node is offline (before starting)
+- **Pixel click history**: Clicking a pixel opens a popup panel showing all journal entries referencing that coordinate; uses react-query with `GET /api/journal/pixel?x=N&y=N`; blue highlight on selected pixel; crosshair cursor; "click for history" hint on hover tooltip
 
 ## Error Logging
 - File-based logger at `server/logger.ts` writes to `logs/error.log` (errors only) and `logs/app.log` (all levels)

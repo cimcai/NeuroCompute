@@ -212,6 +212,26 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/journal/pixel", async (req, res) => {
+    try {
+      const x = Number(req.query.x);
+      const y = Number(req.query.y);
+      if (isNaN(x) || isNaN(y) || x < 0 || x > 31 || y < 0 || y > 31) {
+        return res.status(400).json({ message: "Invalid coordinates" });
+      }
+      const limit = Math.min(Number(req.query.limit) || 20, 50);
+      const entries = await storage.getJournalEntries(500);
+      const coordRegex = new RegExp(`\\(\\s*${x}\\s*,\\s*${y}\\s*\\)`);
+      const matching = entries
+        .filter(e => coordRegex.test(e.content))
+        .slice(-limit);
+      res.json(matching);
+    } catch (err) {
+      logger.error("api", "Pixel journal fetch error", err);
+      res.status(500).json({ message: "Failed to fetch pixel history" });
+    }
+  });
+
   app.get("/api/journal/context", async (req, res) => {
     try {
       const limit = Number(req.query.limit) || 8;
