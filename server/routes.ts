@@ -7,6 +7,7 @@ import { api, ws as wsSchema } from "@shared/routes";
 import { z } from "zod";
 import * as cimc from "./cimc";
 import { startOrchestrator } from "./agent-orchestrator";
+import { logger } from "./logger";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -51,7 +52,7 @@ export async function registerRoutes(
       const node = await storage.updateNodeStatus(id, status);
       res.json(node);
     } catch (err) {
-      console.error("Status update error:", err);
+      logger.error("api", "Status update error", err);
       res.status(500).json({ message: "Failed to update status" });
     }
   });
@@ -71,7 +72,7 @@ export async function registerRoutes(
       const node = await storage.updateNodeDisplayName(id, trimmed);
       res.json(node);
     } catch (err) {
-      console.error("Display name update error:", err);
+      logger.error("api", "Display name update error", err);
       res.status(500).json({ message: "Failed to update display name" });
     }
   });
@@ -127,7 +128,7 @@ export async function registerRoutes(
       );
       res.json(certificate);
     } catch (err) {
-      console.error("Proof generation error:", err);
+      logger.error("api", "Proof generation error", err);
       res.status(500).json({ message: "Failed to generate proof of compute" });
     }
   });
@@ -178,6 +179,25 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Network rate error:", err);
       res.status(500).json({ message: "Failed to fetch network rate" });
+    }
+  });
+
+  app.get("/api/logs/errors", async (req, res) => {
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const logPath = path.default.resolve("logs/error.log");
+      if (!fs.default.existsSync(logPath)) {
+        return res.json({ entries: [], count: 0 });
+      }
+      const content = fs.default.readFileSync(logPath, "utf-8");
+      const lines = content.trim().split("\n").filter(Boolean);
+      const limit = Math.min(Number(req.query.limit) || 50, 200);
+      const recent = lines.slice(-limit);
+      res.json({ entries: recent, count: lines.length });
+    } catch (err) {
+      logger.error("api", "Log fetch error", err);
+      res.status(500).json({ message: "Failed to fetch logs" });
     }
   });
 
@@ -612,7 +632,7 @@ export async function registerRoutes(
     try {
       await storage.markStaleNodesOffline(2);
     } catch (err) {
-      console.error("Stale node sweep error:", err);
+      logger.error("system", "Stale node sweep error", err);
     }
   }, 60_000);
 
@@ -843,7 +863,7 @@ export async function registerRoutes(
           );
         }
       } catch (err) {
-        console.error("WS error:", err);
+        logger.error("ws", "WebSocket message handler error", err);
       }
     });
 

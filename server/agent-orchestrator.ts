@@ -1,5 +1,6 @@
 import * as cimc from "./cimc";
 import { storage } from "./storage";
+import { logger } from "./logger";
 
 type BroadcastFn = (msg: string) => void;
 type SendToNodeFn = (nodeId: number, msg: string) => boolean;
@@ -175,7 +176,7 @@ async function runChatAgent(config: OrchestratorConfig) {
       lastSeenEntryId = Math.max(...entries.map((e) => e.id), lastSeenEntryId);
     }
   } catch (err) {
-    console.error("[orchestrator] Chat agent error:", err);
+    logger.error("orchestrator", "Chat agent error", err);
   }
 }
 
@@ -235,7 +236,7 @@ async function runBridgeAgent(config: OrchestratorConfig) {
       })
     );
   } catch (err) {
-    console.error("[orchestrator] Bridge agent error:", err);
+    logger.error("orchestrator", "Bridge agent error", err);
   }
 }
 
@@ -411,11 +412,11 @@ async function runPixelAgent(config: OrchestratorConfig) {
 
       } catch (err: any) {
         if (err.message === "Not enough pixel credits") continue;
-        console.error(`[orchestrator] Pixel agent error for ${nodeName}:`, err);
+        logger.error("orchestrator", `Pixel agent error for ${nodeName}`, err);
       }
     }
   } catch (err) {
-    console.error("[orchestrator] Pixel agent error:", err);
+    logger.error("orchestrator", "Pixel agent error", err);
   }
 }
 

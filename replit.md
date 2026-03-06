@@ -160,6 +160,13 @@ Server-side autonomous agent system (`server/agent-orchestrator.ts`) that direct
 - **Auto-follow**: Crosshair button toggles camera lock on user's node; panning manually disables follow
 - **Model selector**: Only shown when node is offline (before starting)
 
+## Error Logging
+- File-based logger at `server/logger.ts` writes to `logs/error.log` (errors only) and `logs/app.log` (all levels)
+- Log rotation at 5MB (keeps one `.old` backup)
+- Categories: `api`, `ws`, `orchestrator`, `system`
+- API endpoint: `GET /api/logs/errors?limit=50` returns recent error log entries
+- Logs directory is gitignored
+
 ## Spectator Experience
 - Canvas is always fully visible and interactive (pan/zoom) — no blocking overlay for spectators
 - Subtle "Spectating" pill badge at the bottom of the canvas with pulsing indicator
