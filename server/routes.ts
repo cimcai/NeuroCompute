@@ -620,6 +620,19 @@ export async function registerRoutes(
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
   const clients = new Map<number, WebSocket>();
 
+  const pingInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      if ((ws as any).isAlive === false) {
+        ws.terminate();
+        return;
+      }
+      (ws as any).isAlive = false;
+      ws.ping();
+    });
+  }, 30000);
+
+  wss.on("close", () => clearInterval(pingInterval));
+
   function broadcast(msg: string, exclude?: WebSocket) {
     wss.clients.forEach((c) => {
       if (c !== exclude && c.readyState === WebSocket.OPEN) {
@@ -637,6 +650,9 @@ export async function registerRoutes(
   }
 
   wss.on("connection", (socket) => {
+    (socket as any).isAlive = true;
+    socket.on("pong", () => { (socket as any).isAlive = true; });
+
     let nodeId: number | null = null;
 
     socket.on("message", async (data) => {

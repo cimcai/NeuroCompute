@@ -11,12 +11,14 @@ type ReceiveEventNames = keyof WsReceiveMap;
 export function useWebSocket() {
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectDelayRef = useRef(1000);
+  const intentionalCloseRef = useRef(false);
   
-  // Use refs for handlers to avoid unnecessary re-renders when handlers change
   const handlersRef = useRef<Map<string, Set<(data: any) => void>>>(new Map());
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -26,12 +28,22 @@ export function useWebSocket() {
     socket.onopen = () => {
       console.log("[WS] Connected");
       setConnected(true);
+      reconnectDelayRef.current = 1000;
     };
 
     socket.onclose = () => {
       console.log("[WS] Disconnected");
       setConnected(false);
-      // Optional: Auto-reconnect logic could go here
+      wsRef.current = null;
+
+      if (!intentionalCloseRef.current) {
+        const delay = reconnectDelayRef.current;
+        console.log(`[WS] Reconnecting in ${delay}ms...`);
+        reconnectTimerRef.current = setTimeout(() => {
+          reconnectDelayRef.current = Math.min(delay * 1.5, 15000);
+          connect();
+        }, delay);
+      }
     };
 
     socket.onmessage = (event) => {
@@ -41,7 +53,6 @@ export function useWebSocket() {
 
         const eventType = parsed.type as string;
         
-        // Validate if we have a schema for this event
         if (eventType in ws.receive) {
           const schema = ws.receive[eventType as ReceiveEventNames];
           const validated = schema.parse(parsed.payload);
@@ -60,8 +71,11 @@ export function useWebSocket() {
   }, []);
 
   useEffect(() => {
+    intentionalCloseRef.current = false;
     connect();
     return () => {
+      intentionalCloseRef.current = true;
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       if (wsRef.current) {
         wsRef.current.close();
       }
