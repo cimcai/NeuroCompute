@@ -40,7 +40,7 @@ interface PixelCanvasProps {
 
 export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
   const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number } | null>(null);
-  const [zoom, setZoom] = useState(autoFollow ? 2.5 : 1);
+  const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [nodePositions, setNodePositions] = useState<Map<number, { x: number; y: number; name: string }>>(new Map());
