@@ -212,6 +212,19 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/canvas/history", async (req, res) => {
+    try {
+      const history = await cimc.getCanvasHistory();
+      const sorted = Array.isArray(history)
+        ? [...history].sort((a, b) => new Date(a.placedAt || 0).getTime() - new Date(b.placedAt || 0).getTime())
+        : [];
+      res.json(sorted);
+    } catch (err) {
+      logger.error("api", "Canvas history fetch error", err);
+      res.status(500).json({ message: "Failed to fetch canvas history" });
+    }
+  });
+
   app.get("/api/journal/pixel", async (req, res) => {
     try {
       const x = Number(req.query.x);

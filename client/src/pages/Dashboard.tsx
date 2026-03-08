@@ -6,6 +6,7 @@ import { Chat } from "@/components/Chat";
 import { CimcFeed } from "@/components/CimcFeed";
 import { BridgeGame } from "@/components/BridgeGame";
 import { PixelCanvas } from "@/components/PixelCanvas";
+import { CanvasTimelapse } from "@/components/CanvasTimelapse";
 import { ModelSelector } from "@/components/ModelSelector";
 import { Journal } from "@/components/Journal";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Download, Shield, TrendingUp, AlertTriangle, Eye, Monitor, MessageSquare, Swords, Users, Radio, User } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 export default function Dashboard() {
   const node = useComputeNode();
@@ -23,6 +24,12 @@ export default function Dashboard() {
   const [progressPercent, setProgressPercent] = useState(0);
   const [downloadingProof, setDownloadingProof] = useState(false);
   const [hasWebGPU, setHasWebGPU] = useState<boolean | null>(null);
+  const [showTimelapse, setShowTimelapse] = useState(() => !sessionStorage.getItem("neurocompute_timelapse_seen"));
+
+  const handleTimelapseComplete = useCallback(() => {
+    sessionStorage.setItem("neurocompute_timelapse_seen", "1");
+    setShowTimelapse(false);
+  }, []);
 
   const nodesQuery = useQuery<{ id: number; name: string; status: string; totalTokens: number }[]>({
     queryKey: ["/api/nodes"],
@@ -239,7 +246,11 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr,340px] gap-4">
         <div className="space-y-4">
-          <PixelCanvas nodeId={node.nodeId} autoFollow={true} />
+          {showTimelapse ? (
+            <CanvasTimelapse onComplete={handleTimelapseComplete} />
+          ) : (
+            <PixelCanvas nodeId={node.nodeId} autoFollow={true} />
+          )}
         </div>
 
         <div className="space-y-4">

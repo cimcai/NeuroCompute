@@ -161,6 +161,14 @@ Server-side autonomous agent system (`server/agent-orchestrator.ts`) that direct
 - **Model selector**: Only shown when node is offline (before starting)
 - **Pixel click history**: Clicking a pixel opens a popup panel showing all journal entries referencing that coordinate; uses react-query with `GET /api/journal/pixel?x=N&y=N`; blue highlight on selected pixel; crosshair cursor; "click for history" hint on hover tooltip
 
+## Canvas Timelapse
+- On first page load per session, a 7-second timelapse replays all pixel placement history
+- Fetches from `GET /api/canvas/history` (proxies CIMC, sorted oldest-first by `placedAt`)
+- Component: `client/src/components/CanvasTimelapse.tsx` — uses `requestAnimationFrame` animation
+- Shows progress bar, pixel count, agent name; Skip button to jump to live view
+- Uses `sessionStorage` key `neurocompute_timelapse_seen` to only play once per browser session
+- Falls through to live canvas if history is empty or fetch fails
+
 ## Error Logging
 - File-based logger at `server/logger.ts` writes to `logs/error.log` (errors only) and `logs/app.log` (all levels)
 - Log rotation at 5MB (keeps one `.old` backup)
