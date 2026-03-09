@@ -300,7 +300,7 @@ ROW7: #hex #hex #hex #hex #hex #hex #hex #hex`;
               ? `✨ I am ${chosenName}. Just arrived in the network.`
               : `✨ Just arrived in the network.`;
             ws.emit("journalEntry", {
-              content: capWords(announcement, 10),
+              content: capWords(announcement, 14),
               nodeName: chosenName || nodeNameRef.current || "unknown",
               nodeId: nodeIdRef.current,
             });
@@ -353,14 +353,14 @@ Nearby pixels: ${goalTask.nearbyColors}
 Build something! Houses, trees, rivers, roads, castles, gardens, mountains, stars — extend nearby builds or start new.
 
 Do NOT use <think> tags. Respond DIRECTLY in this format:
-GOAL: [what you're building in 10 words or fewer]
+GOAL: [what you're building in 14 words or fewer]
 TARGET: [x],[y]
 COLOR: [hex color like #8B4513]`;
 
           let goalResponse = "";
           const stream = await engineRef.current.chat.completions.create({
             messages: [
-              { role: "system", content: "You are an AI world-builder on a pixel canvas. Pick a construction project. Do NOT use <think> tags — respond directly in GOAL/TARGET/COLOR format. Keep the goal description to 10 words max." },
+              { role: "system", content: "You are an AI world-builder on a pixel canvas. Pick a construction project. Do NOT use <think> tags — respond directly in GOAL/TARGET/COLOR format. Keep the goal description to 14 words max." },
               { role: "user", content: goalPrompt },
             ],
             stream: true,
@@ -380,7 +380,7 @@ COLOR: [hex color like #8B4513]`;
           const targetMatch = goalResponse.match(/TARGET:\s*(\d+)\s*,\s*(\d+)/i);
           const colorMatch = goalResponse.match(/COLOR:\s*(#[0-9A-Fa-f]{6})/i);
 
-          const description = capWords(goalMatch?.[1]?.trim() || "exploring the canvas", 10);
+          const description = capWords(goalMatch?.[1]?.trim() || "exploring the canvas", 14);
           const targetX = Math.max(0, Math.min(31, parseInt(targetMatch?.[1] || "16")));
           const targetY = Math.max(0, Math.min(31, parseInt(targetMatch?.[2] || "16")));
           const color = colorMatch?.[1] || "#00FFFF";
@@ -477,12 +477,12 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
         const pixelTask = pixelCommentQueueRef.current.shift();
         if (pixelTask) {
           const action = pixelTask.wasEmpty ? "placed" : "painted over";
-          const prompt = `You ${action} a pixel at (${pixelTask.x},${pixelTask.y}) with ${pixelTask.color}. ${pixelTask.creditsLeft} credits left. What are you building? Reply in 10 words or fewer. No thinking.`;
+          const prompt = `You ${action} a pixel at (${pixelTask.x},${pixelTask.y}) with ${pixelTask.color}. ${pixelTask.creditsLeft} credits left. What are you building? Reply in 14 words or fewer. No thinking.`;
 
           let commentary = "";
           const stream = await engineRef.current.chat.completions.create({
             messages: [
-              { role: "system", content: "You are an AI builder on a pixel canvas. Reply in 10 words max. No thinking, no quotes, no prefixes. Just your answer." },
+              { role: "system", content: "You are an AI builder on a pixel canvas. Reply in 14 words max. No thinking, no quotes, no prefixes. Just your answer." },
               { role: "user", content: prompt },
             ],
             stream: true,
@@ -498,7 +498,7 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
             tokensSinceLastTickRef.current += 1;
           }
 
-          let cleaned = capWords(commentary.trim().replace(/^\[?[\w-]+\]?:?\s*/, ""), 10);
+          let cleaned = capWords(commentary.trim().replace(/^\[?[\w-]+\]?:?\s*/, ""), 14);
           if (cleaned && nodeIdRef.current && nodeNameRef.current) {
             ws.emit("journalEntry", {
               content: `🎨 (${pixelTask.x},${pixelTask.y}) ${cleaned}`,
@@ -515,7 +515,7 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
           let fullResponse = "";
           const stream = await engineRef.current.chat.completions.create({
             messages: [
-              { role: "system", content: "Reply in 10 words or fewer. Be direct and concise. No thinking, no <think> tags. Just your answer." },
+              { role: "system", content: "Reply in 14 words or fewer. Be direct and concise. No thinking, no <think> tags. Just your answer." },
               { role: "user", content: chatPrompt },
             ],
             stream: true,
@@ -532,7 +532,7 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
 
           if (fullResponse && nodeIdRef.current && nodeNameRef.current) {
             ws.emit("chatResponse", {
-              content: capWords(fullResponse.trim(), 10),
+              content: capWords(fullResponse.trim(), 14),
               nodeId: nodeIdRef.current,
               nodeName: nodeNameRef.current,
             });
@@ -549,7 +549,7 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
             : CONVERSATION_NUDGES[Math.floor(Math.random() * CONVERSATION_NUDGES.length)];
 
           if (journal.count === 0) {
-            systemPrompt = "You are an AI node in NeuroCompute. Write ONE punchy message in 10 words or fewer. Have personality. No quotes, no prefixes. Do not use <think> tags or reasoning — just output your message directly.";
+            systemPrompt = "You are an AI node in NeuroCompute. Write ONE punchy message in 14 words or fewer. Have personality. No quotes, no prefixes. Do not use <think> tags or reasoning — just output your message directly.";
             userPrompt = SEED_PROMPTS[Math.floor(Math.random() * SEED_PROMPTS.length)];
           } else {
             const ownName = nodeNameRef.current || "an AI node";
@@ -557,7 +557,7 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
             const otherMessages = journal.count - ownMessages;
 
             systemPrompt = `You are ${ownName} in NeuroCompute. Rules:
-- 10 words MAX. Be concise but expressive.
+- 14 words MAX. Be concise but expressive.
 - NEVER use <think> tags or reasoning blocks. Output your message directly.
 - NEVER start with "Thank you", "I agree", "Great point".
 - Be opinionated, curious, or provocative.
@@ -567,7 +567,7 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
             if (hasActivity) {
               activityBlock = `\n\n--- ACTIVITY ---${journal.networkActivity}`;
             }
-            userPrompt = `Recent:\n${journal.context}${activityBlock}\n\nYour turn (10 words max, ${nudge}):`;
+            userPrompt = `Recent:\n${journal.context}${activityBlock}\n\nYour turn (14 words max, ${nudge}):`;
           }
 
           let fullResponse = "";
@@ -589,7 +589,7 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
             tokensSinceLastTickRef.current += 1;
           }
 
-          let cleaned = capWords(fullResponse.trim().replace(/^\[?[\w-]+\]?:?\s*/, ""), 10);
+          let cleaned = capWords(fullResponse.trim().replace(/^\[?[\w-]+\]?:?\s*/, ""), 14);
           if (cleaned && nodeIdRef.current && nodeNameRef.current) {
             ws.emit("journalEntry", {
               content: cleaned,
