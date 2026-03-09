@@ -396,13 +396,15 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
         ctx.globalAlpha = opacity;
 
         const bubbleText = bubble.text;
-        ctx.font = "5px monospace";
+        const fontSize = 9;
+        const maxWrapWidth = 160;
+        ctx.font = `bold ${fontSize}px sans-serif`;
         const lines: string[] = [];
         const words = bubbleText.split(" ");
         let currentLine = "";
         for (const word of words) {
           const test = currentLine ? currentLine + " " + word : word;
-          if (ctx.measureText(test).width > 100) {
+          if (ctx.measureText(test).width > maxWrapWidth) {
             if (currentLine) lines.push(currentLine);
             currentLine = word;
           } else {
@@ -410,28 +412,28 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
           }
         }
         if (currentLine) lines.push(currentLine);
-        if (lines.length > 4) {
-          lines.length = 4;
-          lines[3] = lines[3].slice(0, -3) + "...";
+        if (lines.length > 5) {
+          lines.length = 5;
+          lines[4] = lines[4].slice(0, -3) + "...";
         }
 
-        const lineHeight = 6;
-        const padding = 3;
+        const lineHeight = fontSize + 3;
+        const padding = 6;
         const maxWidth = Math.max(...lines.map(l => ctx.measureText(l).width));
         const bubbleW = maxWidth + padding * 2;
         const bubbleH = lines.length * lineHeight + padding * 2;
         let bubbleX = px + CELL_SIZE / 2 - bubbleW / 2;
-        let bubbleY = py - bubbleH - 8;
+        let bubbleY = py - bubbleH - 12;
         const canvasW = CANVAS_SIZE * CELL_SIZE;
         const canvasH = CANVAS_SIZE * CELL_SIZE;
-        if (bubbleY < 0) bubbleY = py + CELL_SIZE + 4;
-        if (bubbleX < 0) bubbleX = 0;
-        if (bubbleX + bubbleW > canvasW) bubbleX = canvasW - bubbleW;
-        if (bubbleY + bubbleH > canvasH) bubbleY = canvasH - bubbleH;
+        if (bubbleY < 0) bubbleY = py + CELL_SIZE + 6;
+        if (bubbleX < 2) bubbleX = 2;
+        if (bubbleX + bubbleW > canvasW - 2) bubbleX = canvasW - bubbleW - 2;
+        if (bubbleY + bubbleH > canvasH - 2) bubbleY = canvasH - bubbleH - 2;
 
-        ctx.fillStyle = "rgba(0,0,0,0.85)";
+        ctx.fillStyle = "rgba(0,0,0,0.9)";
         ctx.beginPath();
-        const r = 3;
+        const r = 5;
         ctx.moveTo(bubbleX + r, bubbleY);
         ctx.lineTo(bubbleX + bubbleW - r, bubbleY);
         ctx.quadraticCurveTo(bubbleX + bubbleW, bubbleY, bubbleX + bubbleW, bubbleY + r);
@@ -445,21 +447,23 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
         ctx.fill();
 
         ctx.strokeStyle = mc;
-        ctx.lineWidth = 0.5;
+        ctx.lineWidth = 1;
         ctx.stroke();
 
+        const tailX = px + CELL_SIZE / 2;
+        const tailClamp = Math.max(bubbleX + 8, Math.min(bubbleX + bubbleW - 8, tailX));
         ctx.beginPath();
-        ctx.moveTo(px + CELL_SIZE / 2 - 3, bubbleY + bubbleH);
-        ctx.lineTo(px + CELL_SIZE / 2, bubbleY + bubbleH + 4);
-        ctx.lineTo(px + CELL_SIZE / 2 + 3, bubbleY + bubbleH);
-        ctx.fillStyle = "rgba(0,0,0,0.85)";
+        ctx.moveTo(tailClamp - 4, bubbleY + bubbleH);
+        ctx.lineTo(tailClamp, bubbleY + bubbleH + 6);
+        ctx.lineTo(tailClamp + 4, bubbleY + bubbleH);
+        ctx.fillStyle = "rgba(0,0,0,0.9)";
         ctx.fill();
 
         ctx.fillStyle = "#FFFFFF";
-        ctx.font = "5px monospace";
+        ctx.font = `bold ${fontSize}px sans-serif`;
         ctx.textAlign = "left";
         for (let i = 0; i < lines.length; i++) {
-          ctx.fillText(lines[i], bubbleX + padding, bubbleY + padding + (i + 1) * lineHeight - 1);
+          ctx.fillText(lines[i], bubbleX + padding, bubbleY + padding + (i + 1) * lineHeight - 2);
         }
 
         ctx.restore();
