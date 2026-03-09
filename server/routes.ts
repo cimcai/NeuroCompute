@@ -214,20 +214,26 @@ export async function registerRoutes(
 
   app.get("/api/canvas/history", async (req, res) => {
     try {
-      const response = await fetch(`https://cimc.io/api/canvas/history?limit=200`);
-      if (!response.ok) throw new Error(`CIMC history fetch failed: ${response.status}`);
-      const entries = await response.json();
-      if (!Array.isArray(entries)) {
-        return res.json([]);
-      }
+      const allEntries: any[] = [];
       const seen = new Set<number>();
-      const unique = entries.filter((e: any) => {
-        if (seen.has(e.id)) return false;
-        seen.add(e.id);
-        return true;
-      });
-      unique.sort((a: any, b: any) => new Date(a.placedAt || 0).getTime() - new Date(b.placedAt || 0).getTime());
-      res.json(unique);
+      const pageSize = 500;
+      for (let page = 0; page < 10; page++) {
+        const response = await fetch(`https://cimc.io/api/canvas/history?limit=${pageSize}&offset=${page * pageSize}`);
+        if (!response.ok) break;
+        const entries = await response.json();
+        if (!Array.isArray(entries) || entries.length === 0) break;
+        let newCount = 0;
+        for (const e of entries) {
+          if (!seen.has(e.id)) {
+            seen.add(e.id);
+            allEntries.push(e);
+            newCount++;
+          }
+        }
+        if (newCount === 0 || entries.length < pageSize) break;
+      }
+      allEntries.sort((a: any, b: any) => new Date(a.placedAt || 0).getTime() - new Date(b.placedAt || 0).getTime());
+      res.json(allEntries);
     } catch (err) {
       logger.error("api", "Canvas history fetch error", err);
       res.status(500).json({ message: "Failed to fetch canvas history" });
