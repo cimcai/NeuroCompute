@@ -727,6 +727,12 @@ export async function registerRoutes(
       try {
         const message = JSON.parse(data.toString());
 
+        if (message.type === "ping") {
+          (socket as any).isAlive = true;
+          socket.send(JSON.stringify({ type: "pong", payload: {} }));
+          return;
+        }
+
         if (message.type === "nodeJoined") {
           const parsed = wsSchema.send.nodeJoined.parse(message.payload);
           nodeId = parsed.id;

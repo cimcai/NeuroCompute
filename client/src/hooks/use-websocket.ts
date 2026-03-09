@@ -14,8 +14,16 @@ export function useWebSocket() {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelayRef = useRef(1000);
   const intentionalCloseRef = useRef(false);
+  const keepaliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const handlersRef = useRef<Map<string, Set<(data: any) => void>>>(new Map());
+
+  const clearKeepAlive = useCallback(() => {
+    if (keepaliveRef.current) {
+      clearInterval(keepaliveRef.current);
+      keepaliveRef.current = null;
+    }
+  }, []);
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) return;
@@ -29,12 +37,20 @@ export function useWebSocket() {
       console.log("[WS] Connected");
       setConnected(true);
       reconnectDelayRef.current = 1000;
+
+      clearKeepAlive();
+      keepaliveRef.current = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: "ping", payload: {} }));
+        }
+      }, 20000);
     };
 
     socket.onclose = () => {
       console.log("[WS] Disconnected");
       setConnected(false);
       wsRef.current = null;
+      clearKeepAlive();
 
       if (!intentionalCloseRef.current) {
         const delay = reconnectDelayRef.current;
@@ -46,10 +62,16 @@ export function useWebSocket() {
       }
     };
 
+    socket.onerror = (err) => {
+      console.warn("[WS] Error, will reconnect on close", err);
+    };
+
     socket.onmessage = (event) => {
       try {
         const parsed = JSON.parse(event.data);
         if (!parsed.type || !parsed.payload) return;
+
+        if (parsed.type === "pong") return;
 
         const eventType = parsed.type as string;
         
@@ -68,19 +90,53 @@ export function useWebSocket() {
     };
 
     wsRef.current = socket;
-  }, []);
+  }, [clearKeepAlive]);
+
+  const forceReconnect = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    reconnectDelayRef.current = 1000;
+    connect();
+  }, [connect]);
 
   useEffect(() => {
     intentionalCloseRef.current = false;
     connect();
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+          console.log("[WS] Tab visible, reconnecting...");
+          forceReconnect();
+        }
+      }
+    };
+
+    const handleOnline = () => {
+      console.log("[WS] Network online, reconnecting...");
+      forceReconnect();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("online", handleOnline);
+
     return () => {
       intentionalCloseRef.current = true;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      clearKeepAlive();
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("online", handleOnline);
       if (wsRef.current) {
         wsRef.current.close();
       }
     };
-  }, [connect]);
+  }, [connect, forceReconnect, clearKeepAlive]);
 
   const emit = useCallback(<K extends SendEventNames>(
     event: K,
@@ -123,6 +179,6 @@ export function useWebSocket() {
     connected,
     emit,
     subscribe,
-    reconnect: connect
+    reconnect: forceReconnect
   };
 }
