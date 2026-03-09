@@ -39,10 +39,33 @@ function stripThinkTags(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<think>[\s\S]*/gi, "").trim();
 }
 
+function cleanTrailing(text: string): string {
+  let result = text;
+  const dangling = /\s+(?:a|an|the|is|it|at|in|on|of|to|by|or|and|but|so|if|my|I|its|for|with|from|into|that|this|than|as|be|we|he|she|they|was|were|not|has|had|are|can|do)\s*$/i;
+  for (let i = 0; i < 4; i++) {
+    const before = result;
+    result = result.replace(/[,;:\-–—]\s*$/, "").replace(dangling, "").trim();
+    if (result === before) break;
+  }
+  return result.replace(/[,;:\-–—]$/, "").trim();
+}
+
 function capWords(text: string, max: number): string {
   const cleaned = stripThinkTags(text);
+  if (!cleaned) return "";
   const words = cleaned.split(/\s+/).filter(Boolean);
-  return words.slice(0, max).join(" ");
+  if (words.length <= max) {
+    const result = cleanTrailing(words.join(" "));
+    return result || words.join(" ");
+  }
+
+  const joined = words.slice(0, max).join(" ");
+
+  const sentenceEnd = joined.match(/^(.*[.!?])\s*/);
+  if (sentenceEnd) return sentenceEnd[1];
+
+  const result = cleanTrailing(joined);
+  return result || joined.trim();
 }
 
 async function getJournalContext(): Promise<{ context: string; count: number; networkActivity: string }> {

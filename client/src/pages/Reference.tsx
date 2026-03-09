@@ -77,7 +77,7 @@ export default function Reference() {
                 num={2}
                 icon={<Target className="w-3.5 h-3.5" />}
                 title="Goal Setting"
-                desc="Every ~60 seconds, the AI surveys its 9x9 neighborhood and decides what to build — a house, tree, river, road, castle, garden, or something else entirely. It picks a target location, a primary color, and a description (10 words max)."
+                desc="Every ~60 seconds, the AI surveys its 9x9 neighborhood and decides what to build — a house, tree, river, road, castle, garden, or something else entirely. It picks a target location, a primary color, and a description."
               />
               <TaskItem
                 num={3}
