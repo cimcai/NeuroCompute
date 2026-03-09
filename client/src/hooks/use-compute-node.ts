@@ -152,6 +152,12 @@ export function useComputeNode() {
   }, [nodeId]);
 
   useEffect(() => {
+    if (ws.connected && nodeIdRef.current && status === "computing") {
+      ws.emit("nodeJoined", { id: nodeIdRef.current });
+    }
+  }, [ws.connected, ws, status]);
+
+  useEffect(() => {
     const unsub = ws.subscribe("statsUpdate", (data: any) => {
       if (data.currentRate !== undefined) setCurrentRate(data.currentRate);
       if (data.tokensSinceLastCredit !== undefined && data.id === nodeId) {

@@ -12,7 +12,7 @@ interface OrchestratorConfig {
 
 const CHAT_INTERVAL_MS = 90_000;
 const BRIDGE_INTERVAL_MS = 120_000;
-const PIXEL_INTERVAL_MS = 60_000;
+const PIXEL_INTERVAL_MS = 45_000;
 const GOAL_EXPIRY_MS = 10 * 60 * 1000;
 
 const PIXEL_COLORS = [
@@ -392,9 +392,12 @@ async function runPixelAgent(config: OrchestratorConfig) {
           continue;
         }
 
+        const distX = Math.abs(goal.targetX - node.pixelX);
+        const distY = Math.abs(goal.targetY - node.pixelY);
+        const steps = Math.min(3, Math.max(distX, distY));
         const { dx, dy } = moveToward(node.pixelX, node.pixelY, goal.targetX, goal.targetY);
-        const newX = Math.max(0, Math.min(31, node.pixelX + dx));
-        const newY = Math.max(0, Math.min(31, node.pixelY + dy));
+        const newX = Math.max(0, Math.min(31, node.pixelX + dx * steps));
+        const newY = Math.max(0, Math.min(31, node.pixelY + dy * steps));
 
         if (newX !== node.pixelX || newY !== node.pixelY) {
           await storage.moveNode(node.id, newX, newY);
