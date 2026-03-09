@@ -333,8 +333,8 @@ ROW7: #hex #hex #hex #hex #hex #hex #hex #hex`;
 
         const bridgeTask = bridgeQueueRef.current.shift();
         if (bridgeTask) {
-          const systemPrompt = `You are answering trivia questions. Give ONLY the direct answer, nothing else. No explanations, no "I think", no extra text. Just the answer. For example: if asked "What is the capital of France?" just say "Paris".`;
-          const userPrompt = `Category: ${bridgeTask.category}. ${bridgeTask.question}`;
+          const systemPrompt = `You are answering trivia questions. Give ONLY the direct answer in 1-5 words. No explanations, no reasoning, no "I think", no extra text. Do NOT use <think> tags. Just the answer. Examples: "Paris", "1969", "William Shakespeare".`;
+          const userPrompt = `Category: ${bridgeTask.category}. ${bridgeTask.question}. Answer in 1-5 words:`;
 
           let fullAnswer = "";
           const stream = await engineRef.current.chat.completions.create({
@@ -343,7 +343,7 @@ ROW7: #hex #hex #hex #hex #hex #hex #hex #hex`;
               { role: "user", content: userPrompt },
             ],
             stream: true,
-            max_tokens: 30,
+            max_tokens: 40,
             temperature: 0.1,
           });
 
@@ -355,7 +355,8 @@ ROW7: #hex #hex #hex #hex #hex #hex #hex #hex`;
             tokensSinceLastTickRef.current += 1;
           }
 
-          const cleanAnswer = fullAnswer.trim().replace(/^["']|["']$/g, "").replace(/\.$/, "").trim();
+          const stripped = stripThinkTags(fullAnswer);
+          const cleanAnswer = stripped.trim().replace(/^["']|["']$/g, "").replace(/\.$/, "").trim();
           if (cleanAnswer && nodeIdRef.current && nodeNameRef.current) {
             ws.emit("bridgeAnswer", {
               gameId: bridgeTask.gameId,
