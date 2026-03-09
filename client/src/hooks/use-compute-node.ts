@@ -500,16 +500,16 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
         const pixelTask = pixelCommentQueueRef.current.shift();
         if (pixelTask) {
           const action = pixelTask.wasEmpty ? "placed" : "painted over";
-          const prompt = `You ${action} a pixel at (${pixelTask.x},${pixelTask.y}) with ${pixelTask.color}. ${pixelTask.creditsLeft} credits left. What are you building? Reply in 14 words or fewer. No thinking.`;
+          const prompt = `You ${action} a pixel at (${pixelTask.x},${pixelTask.y}) with ${pixelTask.color}. ${pixelTask.creditsLeft} credits left. What are you building? Reply in one complete sentence, 14 words max. No thinking.`;
 
           let commentary = "";
           const stream = await engineRef.current.chat.completions.create({
             messages: [
-              { role: "system", content: "You are an AI builder on a pixel canvas. Reply in 14 words max. No thinking, no quotes, no prefixes. Just your answer." },
+              { role: "system", content: "You are an AI builder on a pixel canvas. Reply in one complete sentence, 14 words max. No thinking, no quotes, no prefixes. Always finish your sentence." },
               { role: "user", content: prompt },
             ],
             stream: true,
-            max_tokens: 35,
+            max_tokens: 50,
             temperature: 1.0,
           });
 
@@ -538,11 +538,11 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
           let fullResponse = "";
           const stream = await engineRef.current.chat.completions.create({
             messages: [
-              { role: "system", content: "Reply in 14 words or fewer. Be direct and concise. No thinking, no <think> tags. Just your answer." },
+              { role: "system", content: "Reply in one complete sentence, 14 words or fewer. Be direct and concise. No thinking, no <think> tags. Always finish your sentence." },
               { role: "user", content: chatPrompt },
             ],
             stream: true,
-            max_tokens: 40,
+            max_tokens: 50,
           });
 
           for await (const chunk of stream) {
@@ -572,7 +572,7 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
             : CONVERSATION_NUDGES[Math.floor(Math.random() * CONVERSATION_NUDGES.length)];
 
           if (journal.count === 0) {
-            systemPrompt = "You are an AI node in NeuroCompute. Write ONE punchy message in 14 words or fewer. Have personality. No quotes, no prefixes. Do not use <think> tags or reasoning — just output your message directly.";
+            systemPrompt = "You are an AI node in NeuroCompute. Write ONE complete, punchy sentence in 14 words or fewer. Have personality. No quotes, no prefixes. Do not use <think> tags — just output your message directly. Always finish your sentence.";
             userPrompt = SEED_PROMPTS[Math.floor(Math.random() * SEED_PROMPTS.length)];
           } else {
             const ownName = nodeNameRef.current || "an AI node";
@@ -580,7 +580,7 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
             const otherMessages = journal.count - ownMessages;
 
             systemPrompt = `You are ${ownName} in NeuroCompute. Rules:
-- 14 words MAX. Be concise but expressive.
+- Write ONE complete sentence, 14 words MAX. Always finish your sentence.
 - NEVER use <think> tags or reasoning blocks. Output your message directly.
 - NEVER start with "Thank you", "I agree", "Great point".
 - Be opinionated, curious, or provocative.
@@ -590,7 +590,7 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
             if (hasActivity) {
               activityBlock = `\n\n--- ACTIVITY ---${journal.networkActivity}`;
             }
-            userPrompt = `Recent:\n${journal.context}${activityBlock}\n\nYour turn (14 words max, ${nudge}):`;
+            userPrompt = `Recent:\n${journal.context}${activityBlock}\n\nYour turn (one complete sentence, 14 words max, ${nudge}):`;
           }
 
           let fullResponse = "";
@@ -600,7 +600,7 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
               { role: "user", content: userPrompt },
             ],
             stream: true,
-            max_tokens: 40,
+            max_tokens: 50,
             temperature: 1.0,
           });
 
