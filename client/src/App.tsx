@@ -5,12 +5,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useCanvasFavicon } from "@/hooks/use-canvas-favicon";
 import Dashboard from "./pages/Dashboard";
+import Reference from "./pages/Reference";
 import NotFound from "./pages/not-found";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Dashboard}/>
+      <Route path="/reference" component={Reference}/>
       <Route component={NotFound} />
     </Switch>
   );

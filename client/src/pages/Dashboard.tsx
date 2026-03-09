@@ -14,9 +14,10 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Download, Shield, TrendingUp, AlertTriangle, Eye, Monitor, MessageSquare, Swords, Users, Radio, User } from "lucide-react";
+import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Download, Shield, TrendingUp, AlertTriangle, Eye, Monitor, MessageSquare, Swords, Users, Radio, User, BookOpen } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, useCallback } from "react";
+import { Link } from "wouter";
 
 export default function Dashboard() {
   const node = useComputeNode();
@@ -101,6 +102,12 @@ export default function Dashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Link href="/reference">
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground" data-testid="link-reference">
+              <BookOpen className="w-3.5 h-3.5 mr-1" />
+              <span className="hidden sm:inline">How it works</span>
+            </Button>
+          </Link>
           {node.wsConnected ? (
             <div className="flex items-center gap-1.5 text-xs text-primary">
               <Wifi className="w-3.5 h-3.5" />

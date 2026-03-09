@@ -214,11 +214,20 @@ export async function registerRoutes(
 
   app.get("/api/canvas/history", async (req, res) => {
     try {
-      const history = await cimc.getCanvasHistory();
-      const sorted = Array.isArray(history)
-        ? [...history].sort((a, b) => new Date(a.placedAt || 0).getTime() - new Date(b.placedAt || 0).getTime())
-        : [];
-      res.json(sorted);
+      const response = await fetch(`https://cimc.io/api/canvas/history?limit=200`);
+      if (!response.ok) throw new Error(`CIMC history fetch failed: ${response.status}`);
+      const entries = await response.json();
+      if (!Array.isArray(entries)) {
+        return res.json([]);
+      }
+      const seen = new Set<number>();
+      const unique = entries.filter((e: any) => {
+        if (seen.has(e.id)) return false;
+        seen.add(e.id);
+        return true;
+      });
+      unique.sort((a: any, b: any) => new Date(a.placedAt || 0).getTime() - new Date(b.placedAt || 0).getTime());
+      res.json(unique);
     } catch (err) {
       logger.error("api", "Canvas history fetch error", err);
       res.status(500).json({ message: "Failed to fetch canvas history" });
