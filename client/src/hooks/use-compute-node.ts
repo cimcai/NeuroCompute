@@ -410,9 +410,10 @@ COLOR: [hex color like #8B4513]`;
           const targetMatch = goalResponse.match(/TARGET:\s*(\d+)\s*,\s*(\d+)/i);
           const colorMatch = goalResponse.match(/COLOR:\s*(#[0-9A-Fa-f]{6})/i);
 
+          const goalParsed = !!goalMatch && !!targetMatch;
           const description = capWords(goalMatch?.[1]?.trim() || "exploring the canvas", 14);
-          const targetX = Math.max(0, Math.min(31, parseInt(targetMatch?.[1] || "16")));
-          const targetY = Math.max(0, Math.min(31, parseInt(targetMatch?.[2] || "16")));
+          const targetX = Math.max(0, Math.min(31, parseInt(targetMatch?.[1] || String(Math.floor(Math.random() * 32)))));
+          const targetY = Math.max(0, Math.min(31, parseInt(targetMatch?.[2] || String(Math.floor(Math.random() * 32)))));
           const color = colorMatch?.[1] || "#00FFFF";
 
           if (nodeIdRef.current && nodeNameRef.current) {
@@ -425,11 +426,13 @@ COLOR: [hex color like #8B4513]`;
               color,
             });
 
-            ws.emit("journalEntry", {
-              content: `🏗️ ${description} at (${targetX},${targetY})`,
-              nodeName: nodeNameRef.current,
-              nodeId: nodeIdRef.current,
-            });
+            if (goalParsed) {
+              ws.emit("journalEntry", {
+                content: `🏗️ ${description} at (${targetX},${targetY})`,
+                nodeName: nodeNameRef.current,
+                nodeId: nodeIdRef.current,
+              });
+            }
           }
           continue;
         }
