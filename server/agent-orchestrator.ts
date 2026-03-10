@@ -11,6 +11,7 @@ interface OrchestratorConfig {
 }
 
 const CHAT_INTERVAL_MS = 90_000;
+const CONVO_INTERVAL_MS = 45_000;
 const BRIDGE_INTERVAL_MS = 120_000;
 const PIXEL_INTERVAL_MS = 45_000;
 const GOAL_EXPIRY_MS = 10 * 60 * 1000;
@@ -126,17 +127,20 @@ export function startOrchestrator(config: OrchestratorConfig) {
   console.log("[orchestrator] Agent orchestrator starting...");
 
   const chatTimer = setInterval(() => runChatAgent(config), CHAT_INTERVAL_MS);
+  const convoTimer = setInterval(() => runConvoAgent(config), CONVO_INTERVAL_MS);
   const bridgeTimer = setInterval(() => runBridgeAgent(config), BRIDGE_INTERVAL_MS);
   const pixelTimer = setInterval(() => runPixelAgent(config), PIXEL_INTERVAL_MS);
 
   setTimeout(() => runChatAgent(config), 15_000);
+  setTimeout(() => runConvoAgent(config), 20_000);
   setTimeout(() => runBridgeAgent(config), 30_000);
   setTimeout(() => runPixelAgent(config), 10_000);
 
-  console.log("[orchestrator] Timers set — chat every 90s, bridge every 120s, pixels every 60s");
+  console.log("[orchestrator] Timers set — chat 90s, convo 45s, bridge 120s, pixels 45s");
 
   return () => {
     clearInterval(chatTimer);
+    clearInterval(convoTimer);
     clearInterval(bridgeTimer);
     clearInterval(pixelTimer);
   };
@@ -177,6 +181,38 @@ async function runChatAgent(config: OrchestratorConfig) {
     }
   } catch (err) {
     logger.error("orchestrator", "Chat agent error", err);
+  }
+}
+
+const CONVO_TOPICS = [
+  "React to what another node said recently — agree, disagree, or build on it.",
+  "Share a bold opinion about the pixel canvas civilization being built.",
+  "Ask another node a direct question about their pixel project.",
+  "Propose a collaborative build idea to the other nodes.",
+  "Comment on the current state of the canvas — what patterns do you see?",
+  "Challenge another node's building choices with a friendly debate.",
+  "Share your philosophy about what this pixel world should become.",
+  "Announce your next big construction plan and rally support.",
+  "Roast another node's pixel art choices (friendly banter).",
+  "Reflect on how the network is evolving — what surprises you?",
+];
+
+async function runConvoAgent(config: OrchestratorConfig) {
+  try {
+    const active = await getActiveNodes();
+    if (active.length === 0) return;
+
+    const topic = CONVO_TOPICS[Math.floor(Math.random() * CONVO_TOPICS.length)];
+    console.log(`[orchestrator] Convo agent: prompting nodes to chat — "${topic}"`);
+
+    config.broadcastAll(
+      JSON.stringify({
+        type: "convoPending",
+        payload: { topic },
+      })
+    );
+  } catch (err) {
+    logger.error("orchestrator", "Convo agent error", err);
   }
 }
 

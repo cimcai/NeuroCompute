@@ -104,6 +104,7 @@ export function useComputeNode() {
   const isRunningRef = useRef(false);
   const tokensSinceLastTickRef = useRef(0);
   const chatQueueRef = useRef<string[]>([]);
+  const convoQueueRef = useRef<string[]>([]);
   const bridgeQueueRef = useRef<{ gameId: number; question: string; category: string }[]>([]);
   const pixelCommentQueueRef = useRef<{ x: number; y: number; color: string; wasEmpty: boolean; creditsLeft: number }[]>([]);
   const goalQueueRef = useRef<{ nodeId: number; currentX: number; currentY: number; credits: number; nearbyColors: string }[]>([]);
@@ -190,6 +191,15 @@ export function useComputeNode() {
     const unsub = ws.subscribe("chatPending", (data: { content: string }) => {
       if (isRunningRef.current && engineRef.current) {
         chatQueueRef.current.push(data.content);
+      }
+    });
+    return unsub;
+  }, [ws]);
+
+  useEffect(() => {
+    const unsub = ws.subscribe("convoPending", (data: { topic: string }) => {
+      if (isRunningRef.current && engineRef.current) {
+        convoQueueRef.current.push(data.topic);
       }
     });
     return unsub;
@@ -570,16 +580,22 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
               nodeName: nodeNameRef.current,
             });
           }
-        } else {
+          continue;
+        }
+
+        const convoTopic = convoQueueRef.current.shift();
+
+        {
           const journal = await getJournalContext();
           let systemPrompt: string;
           let userPrompt: string;
 
           const hasActivity = journal.networkActivity.length > 0;
-          const useActivityNudge = hasActivity && Math.random() < 0.4;
-          const nudge = useActivityNudge
-            ? ACTIVITY_NUDGES[Math.floor(Math.random() * ACTIVITY_NUDGES.length)]
-            : CONVERSATION_NUDGES[Math.floor(Math.random() * CONVERSATION_NUDGES.length)];
+          const nudge = convoTopic
+            ? convoTopic
+            : (hasActivity && Math.random() < 0.4)
+              ? ACTIVITY_NUDGES[Math.floor(Math.random() * ACTIVITY_NUDGES.length)]
+              : CONVERSATION_NUDGES[Math.floor(Math.random() * CONVERSATION_NUDGES.length)];
 
           if (journal.count === 0) {
             systemPrompt = "You are an AI node in NeuroCompute. Write ONE complete, punchy sentence in 14 words or fewer. Have personality. No quotes, no prefixes. Do not use <think> tags — just output your message directly. Always finish your sentence.";
