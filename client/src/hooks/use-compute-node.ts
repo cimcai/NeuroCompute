@@ -105,7 +105,6 @@ export function useComputeNode() {
   const tokensSinceLastTickRef = useRef(0);
   const chatQueueRef = useRef<string[]>([]);
   const convoQueueRef = useRef<string[]>([]);
-  const bridgeQueueRef = useRef<{ gameId: number; question: string; category: string }[]>([]);
   const pixelCommentQueueRef = useRef<{ x: number; y: number; color: string; wasEmpty: boolean; creditsLeft: number }[]>([]);
   const goalQueueRef = useRef<{ nodeId: number; currentX: number; currentY: number; credits: number; nearbyColors: string }[]>([]);
   const avatarQueueRef = useRef<boolean[]>([]);
@@ -206,15 +205,7 @@ export function useComputeNode() {
   }, [ws]);
 
   useEffect(() => {
-    const unsub = ws.subscribe("bridgeQuestion", (data: { gameId: number; question: string; category: string; modelId: string }) => {
-      if (isRunningRef.current && engineRef.current) {
-        bridgeQueueRef.current.push({
-          gameId: data.gameId,
-          question: data.question,
-          category: data.category,
-        });
-      }
-    });
+    const unsub = ws.subscribe("bridgeQuestion", () => {});
     return unsub;
   }, [ws]);
 
@@ -342,43 +333,6 @@ ROW7: #hex #hex #hex #hex #hex #hex #hex #hex`;
               content: capWords(announcement, 14),
               nodeName: chosenName || nodeNameRef.current || "unknown",
               nodeId: nodeIdRef.current,
-            });
-          }
-          continue;
-        }
-
-        const bridgeTask = bridgeQueueRef.current.shift();
-        if (bridgeTask) {
-          const systemPrompt = `You are answering trivia questions. Give ONLY the direct answer in 1-5 words. No explanations, no reasoning, no "I think", no extra text. Do NOT use <think> tags. Just the answer. Examples: "Paris", "1969", "William Shakespeare".`;
-          const userPrompt = `Category: ${bridgeTask.category}. ${bridgeTask.question}. Answer in 1-5 words:`;
-
-          let fullAnswer = "";
-          const stream = await engineRef.current.chat.completions.create({
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt },
-            ],
-            stream: true,
-            max_tokens: 40,
-            temperature: 0.1,
-          });
-
-          for await (const chunk of stream) {
-            if (!isRunningRef.current) break;
-            const content = chunk.choices[0]?.delta?.content || "";
-            fullAnswer += content;
-            setSessionTokens((prev) => prev + 1);
-            tokensSinceLastTickRef.current += 1;
-          }
-
-          const stripped = stripThinkTags(fullAnswer);
-          const cleanAnswer = stripped.trim().replace(/^["']|["']$/g, "").replace(/\.$/, "").trim();
-          if (cleanAnswer && nodeIdRef.current && nodeNameRef.current) {
-            ws.emit("bridgeAnswer", {
-              gameId: bridgeTask.gameId,
-              answer: cleanAnswer,
-              nodeId: nodeIdRef.current,
-              nodeName: nodeNameRef.current,
             });
           }
           continue;
