@@ -1,5 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
+import { registerRoutes, fetchAndCacheHistory } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 
@@ -98,6 +98,9 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+      fetchAndCacheHistory().catch(() => {
+        log("History pre-warm failed, will retry on first request", "history");
+      });
     },
   );
 })();

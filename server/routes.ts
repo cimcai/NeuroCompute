@@ -12,7 +12,7 @@ import { logger } from "./logger";
 let pixelHistoryCache: any[] = [];
 let pixelCacheTotal = 0;
 
-async function fetchAndCacheHistory(): Promise<any[]> {
+export async function fetchAndCacheHistory(): Promise<any[]> {
   const response = await fetch("https://cimc.io/api/canvas/history/all");
   if (!response.ok) throw new Error(`CIMC history/all failed: ${response.status}`);
   const data = await response.json();
@@ -20,6 +20,7 @@ async function fetchAndCacheHistory(): Promise<any[]> {
   entries.sort((a: any, b: any) => new Date(a.placedAt || 0).getTime() - new Date(b.placedAt || 0).getTime());
   pixelHistoryCache = entries;
   pixelCacheTotal = entries.length;
+  console.log(`[history] Cached ${entries.length} pixel history entries`);
   return entries;
 }
 
@@ -247,22 +248,27 @@ export async function registerRoutes(
     };
 
     try {
-      const STABLE_THRESHOLD = 1000;
+      const CHUNK = 500;
+      const cached = pixelHistoryCache;
 
-      if (pixelHistoryCache.length >= STABLE_THRESHOLD) {
-        const stablePixels = pixelHistoryCache.slice(0, STABLE_THRESHOLD);
-        sendChunk(stablePixels, pixelCacheTotal, false);
+      if (cached.length > 0) {
+        const lastCachedId: number = cached[cached.length - 1]?.id ?? 0;
+
+        for (let i = 0; i < cached.length; i += CHUNK) {
+          sendChunk(cached.slice(i, i + CHUNK), pixelCacheTotal, false);
+        }
 
         const fresh = await fetchAndCacheHistory();
-        const remaining = fresh.slice(STABLE_THRESHOLD);
-        const CHUNK = 500;
-        for (let i = 0; i < remaining.length; i += CHUNK) {
-          sendChunk(remaining.slice(i, i + CHUNK), fresh.length, i + CHUNK >= remaining.length);
+        const newPixels = fresh.filter((p: any) => p.id > lastCachedId);
+        if (newPixels.length > 0) {
+          for (let i = 0; i < newPixels.length; i += CHUNK) {
+            sendChunk(newPixels.slice(i, i + CHUNK), fresh.length, i + CHUNK >= newPixels.length);
+          }
+        } else {
+          sendChunk([], fresh.length, true);
         }
-        if (remaining.length === 0) sendChunk([], fresh.length, true);
       } else {
         const all = await fetchAndCacheHistory();
-        const CHUNK = 500;
         for (let i = 0; i < all.length; i += CHUNK) {
           sendChunk(all.slice(i, i + CHUNK), all.length, i + CHUNK >= all.length);
         }
