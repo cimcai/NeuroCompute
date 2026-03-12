@@ -9,6 +9,20 @@ import * as cimc from "./cimc";
 import { startOrchestrator } from "./agent-orchestrator";
 import { logger } from "./logger";
 
+let pixelHistoryCache: any[] = [];
+let pixelCacheTotal = 0;
+
+async function fetchAndCacheHistory(): Promise<any[]> {
+  const response = await fetch("https://cimc.io/api/canvas/history/all");
+  if (!response.ok) throw new Error(`CIMC history/all failed: ${response.status}`);
+  const data = await response.json();
+  const entries: any[] = Array.isArray(data) ? data : (data.history || []);
+  entries.sort((a: any, b: any) => new Date(a.placedAt || 0).getTime() - new Date(b.placedAt || 0).getTime());
+  pixelHistoryCache = entries;
+  pixelCacheTotal = entries.length;
+  return entries;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -214,16 +228,52 @@ export async function registerRoutes(
 
   app.get("/api/canvas/history", async (req, res) => {
     try {
-      const response = await fetch(`https://cimc.io/api/canvas/history/all`);
-      if (!response.ok) throw new Error(`CIMC history/all failed: ${response.status}`);
-      const data = await response.json();
-      const entries: any[] = Array.isArray(data) ? data : (data.history || []);
-      entries.sort((a: any, b: any) => new Date(a.placedAt || 0).getTime() - new Date(b.placedAt || 0).getTime());
+      const entries = pixelHistoryCache.length > 0 ? pixelHistoryCache : await fetchAndCacheHistory();
       res.json(entries);
     } catch (err) {
       logger.error("api", "Canvas history fetch error", err);
       res.status(500).json({ message: "Failed to fetch canvas history" });
     }
+  });
+
+  app.get("/api/canvas/history/stream", async (req, res) => {
+    res.setHeader("Content-Type", "application/x-ndjson");
+    res.setHeader("Transfer-Encoding", "chunked");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+
+    const sendChunk = (pixels: any[], total: number, done: boolean) => {
+      res.write(JSON.stringify({ pixels, total, done }) + "\n");
+    };
+
+    try {
+      const STABLE_THRESHOLD = 1000;
+
+      if (pixelHistoryCache.length >= STABLE_THRESHOLD) {
+        const stablePixels = pixelHistoryCache.slice(0, STABLE_THRESHOLD);
+        sendChunk(stablePixels, pixelCacheTotal, false);
+
+        const fresh = await fetchAndCacheHistory();
+        const remaining = fresh.slice(STABLE_THRESHOLD);
+        const CHUNK = 500;
+        for (let i = 0; i < remaining.length; i += CHUNK) {
+          sendChunk(remaining.slice(i, i + CHUNK), fresh.length, i + CHUNK >= remaining.length);
+        }
+        if (remaining.length === 0) sendChunk([], fresh.length, true);
+      } else {
+        const all = await fetchAndCacheHistory();
+        const CHUNK = 500;
+        for (let i = 0; i < all.length; i += CHUNK) {
+          sendChunk(all.slice(i, i + CHUNK), all.length, i + CHUNK >= all.length);
+        }
+        if (all.length === 0) sendChunk([], 0, true);
+      }
+    } catch (err) {
+      logger.error("api", "Canvas history stream error", err);
+      res.write(JSON.stringify({ pixels: [], total: 0, done: true, error: "fetch failed" }) + "\n");
+    }
+
+    res.end();
   });
 
   app.get("/api/journal/pixel", async (req, res) => {
