@@ -254,7 +254,7 @@ export function useComputeNode() {
 
 1. CHOOSE YOUR NAME: Pick a short, memorable name for yourself (1-2 words max). Be creative — mythological figures, sci-fi characters, nature elements, abstract concepts. Examples: "Ember", "Nexus", "Coral Drift", "Void Walker", "Pixel Sage". NOT generic like "AI-Node" or "Bot-1".
 
-2. DESIGN YOUR AVATAR: Create an 8x8 pixel art self-portrait. This tiny image IS you on the map. Make something that matches your chosen name and personality — a face, creature, symbol, or abstract form. Use vivid colors. #000000 = transparent.
+2. DESIGN YOUR AVATAR: Create an 8x8 pixel art self-portrait. This tiny image IS you on the map. Make something that matches your chosen name and personality — a face, creature, symbol, or abstract form. Use muted, earthy tones — dusty blues, sage greens, warm tans, soft purples, terracotta. Avoid pure neon. #000000 = transparent.
 
 Respond in EXACTLY this format:
 NAME: [your chosen name]
@@ -421,17 +421,17 @@ COLOR: [hex color like #8B4513]`;
 
 Think of something creative: a robot face, a tiny animal, an alien, a wizard, a ghost, a mushroom, a crystal, a flame — anything with personality!
 
-Output EXACTLY 8 rows of 8 hex colors each. Use #000000 for transparent/empty pixels. Use vivid colors.
+Output EXACTLY 8 rows of 8 hex colors each. Use #000000 for transparent/empty pixels. Use muted, earthy tones — dusty blues, sage greens, warm tans, soft purples, terracotta. Avoid pure neons.
 
 Format — one row per line, colors space-separated:
-ROW0: #000000 #000000 #FF0000 #FF0000 #FF0000 #FF0000 #000000 #000000
-ROW1: #000000 #FF0000 #FFFF00 #FF0000 #FF0000 #FFFF00 #FF0000 #000000
-ROW2: #FF0000 #FF0000 #FF0000 #FF0000 #FF0000 #FF0000 #FF0000 #FF0000
-ROW3: #FF0000 #FF0000 #FF0000 #FF0000 #FF0000 #FF0000 #FF0000 #FF0000
-ROW4: #000000 #FF0000 #000000 #FF0000 #FF0000 #000000 #FF0000 #000000
-ROW5: #000000 #FF0000 #FF0000 #000000 #000000 #FF0000 #FF0000 #000000
-ROW6: #000000 #000000 #FF0000 #FF0000 #FF0000 #FF0000 #000000 #000000
-ROW7: #000000 #000000 #000000 #FF0000 #FF0000 #000000 #000000 #000000
+ROW0: #000000 #000000 #7B9AB5 #7B9AB5 #7B9AB5 #7B9AB5 #000000 #000000
+ROW1: #000000 #7B9AB5 #C4A84E #7B9AB5 #7B9AB5 #C4A84E #7B9AB5 #000000
+ROW2: #7B9AB5 #7B9AB5 #7B9AB5 #7B9AB5 #7B9AB5 #7B9AB5 #7B9AB5 #7B9AB5
+ROW3: #7B9AB5 #7B9AB5 #7B9AB5 #7B9AB5 #7B9AB5 #7B9AB5 #7B9AB5 #7B9AB5
+ROW4: #000000 #7B9AB5 #000000 #7B9AB5 #7B9AB5 #000000 #7B9AB5 #000000
+ROW5: #000000 #7B9AB5 #7B9AB5 #000000 #000000 #7B9AB5 #7B9AB5 #000000
+ROW6: #000000 #000000 #7B9AB5 #7B9AB5 #7B9AB5 #7B9AB5 #000000 #000000
+ROW7: #000000 #000000 #000000 #7B9AB5 #7B9AB5 #000000 #000000 #000000
 
 Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
 

@@ -17,9 +17,9 @@ const PIXEL_INTERVAL_MS = 45_000;
 const GOAL_EXPIRY_MS = 10 * 60 * 1000;
 
 const PIXEL_COLORS = [
-  "#00FFFF", "#FF00FF", "#00FF00", "#FFFF00",
-  "#FF6600", "#0066FF", "#FF0066", "#66FF00",
-  "#6600FF", "#00FF66", "#FF3300", "#0033FF",
+  "#7AADAD", "#A98EC4", "#8FAF8A", "#C4A882",
+  "#7B9AB5", "#C4785A", "#9DB87A", "#C4A84E",
+  "#8090A0", "#B58A7A", "#7A9EC4", "#C49A7A",
 ];
 
 const CHAT_SYSTEM_PROMPTS = [
@@ -102,14 +102,14 @@ const AVATAR_TEMPLATES = [
 function generateFallbackAvatar(): string[][] {
   const template = AVATAR_TEMPLATES[Math.floor(Math.random() * AVATAR_TEMPLATES.length)];
   const palettes = [
-    { C: "#00FFFF", E: "#FFFFFF", N: "#FF69B4", B: "#8B4513" },
-    { C: "#FF00FF", E: "#FFFF00", N: "#000000", B: "#8B4513" },
-    { C: "#00FF00", E: "#FF0000", N: "#FFFFFF", B: "#654321" },
-    { C: "#FF6600", E: "#00FFFF", N: "#FFFFFF", B: "#8B4513" },
-    { C: "#4169E1", E: "#FFFF00", N: "#FF69B4", B: "#8B4513" },
-    { C: "#FFD700", E: "#FF0000", N: "#000000", B: "#654321" },
-    { C: "#FF4444", E: "#FFFFFF", N: "#000000", B: "#8B4513" },
-    { C: "#9966FF", E: "#00FF00", N: "#FF69B4", B: "#654321" },
+    { C: "#7AADAD", E: "#E8D5B0", N: "#C4849A", B: "#7A5C3A" },
+    { C: "#A98EC4", E: "#D4C87A", N: "#5A5A6A", B: "#7A5C3A" },
+    { C: "#8FAF8A", E: "#C4785A", N: "#F0EAD6", B: "#5C4030" },
+    { C: "#C4785A", E: "#7AADAD", N: "#F0EAD6", B: "#7A5C3A" },
+    { C: "#7B9AB5", E: "#C4A84E", N: "#C4849A", B: "#7A5C3A" },
+    { C: "#C4A84E", E: "#8090A0", N: "#3A3A4A", B: "#5C4030" },
+    { C: "#B07070", E: "#E8D5B0", N: "#3A3A4A", B: "#7A5C3A" },
+    { C: "#9080B8", E: "#8FAF8A", N: "#C4849A", B: "#5C4030" },
   ];
   const palette = palettes[Math.floor(Math.random() * palettes.length)];
   return template.map(row =>
