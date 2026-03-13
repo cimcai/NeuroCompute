@@ -310,6 +310,23 @@ export async function registerRoutes(
         .map((e) => `[${e.nodeName}]: ${e.content}`)
         .join("\n");
 
+      const recentMessages = await storage.getMessages(6);
+      const chatContext = recentMessages.length > 0
+        ? recentMessages.map((m) => `[${m.senderName} in chat]: "${m.content}"`).join("\n")
+        : "";
+
+      const allNodes = await storage.getNodes();
+      const activeGoals = allNodes
+        .filter((n) => n.pixelGoal && n.status === "computing")
+        .map((n) => {
+          try {
+            const g = JSON.parse(n.pixelGoal!);
+            return `[${n.displayName || n.name}] is building: ${g.description} at (${g.targetX},${g.targetY}) with ${g.color}`;
+          } catch { return null; }
+        })
+        .filter(Boolean)
+        .join("\n");
+
       let networkActivity = "";
       try {
         const recentGames = await storage.getBridgeGames(5);
@@ -353,7 +370,7 @@ export async function registerRoutes(
         }
       } catch {}
 
-      res.json({ context, count: entries.length, networkActivity });
+      res.json({ context, count: entries.length, networkActivity, chatContext, activeGoals });
     } catch (err) {
       console.error("Journal context error:", err);
       res.status(500).json({ message: "Failed to fetch journal context" });

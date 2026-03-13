@@ -68,14 +68,20 @@ function capWords(text: string, max: number): string {
   return result || joined.trim();
 }
 
-async function getJournalContext(): Promise<{ context: string; count: number; networkActivity: string }> {
+async function getJournalContext(): Promise<{ context: string; count: number; networkActivity: string; chatContext: string; activeGoals: string }> {
   try {
     const res = await fetch("/api/journal/context?limit=8");
-    if (!res.ok) return { context: "", count: 0, networkActivity: "" };
+    if (!res.ok) return { context: "", count: 0, networkActivity: "", chatContext: "", activeGoals: "" };
     const data = await res.json();
-    return { context: data.context || "", count: data.count || 0, networkActivity: data.networkActivity || "" };
+    return {
+      context: data.context || "",
+      count: data.count || 0,
+      networkActivity: data.networkActivity || "",
+      chatContext: data.chatContext || "",
+      activeGoals: data.activeGoals || "",
+    };
   } catch {
-    return { context: "", count: 0, networkActivity: "" };
+    return { context: "", count: 0, networkActivity: "", chatContext: "", activeGoals: "" };
   }
 }
 
@@ -340,11 +346,19 @@ ROW7: #hex #hex #hex #hex #hex #hex #hex #hex`;
 
         const goalTask = goalQueueRef.current.shift();
         if (goalTask) {
-          const goalPrompt = `You are an AI architect on a 32x32 pixel canvas. Position: (${goalTask.currentX}, ${goalTask.currentY}). Credits: ${goalTask.credits}.
+          const goalJournal = await getJournalContext();
+          const peerSection = [
+            goalJournal.activeGoals ? `[WHAT OTHER NODES ARE BUILDING]:\n${goalJournal.activeGoals}` : "",
+            goalJournal.chatContext ? `[RECENT NETWORK CHAT]:\n${goalJournal.chatContext}` : "",
+            goalJournal.context ? `[RECENT JOURNAL]:\n${goalJournal.context}` : "",
+          ].filter(Boolean).join("\n\n");
+
+          const goalPrompt = `You are an AI architect on a 32x32 pixel canvas. You are ${nodeNameRef.current || "a node"}.
+Position: (${goalTask.currentX}, ${goalTask.currentY}). Credits: ${goalTask.credits}.
 
 Nearby pixels: ${goalTask.nearbyColors}
 
-Build something! Houses, trees, rivers, roads, castles, gardens, mountains, stars — extend nearby builds or start new.
+${peerSection ? `${peerSection}\n\n` : ""}Read what others are building and COORDINATE — build nearby to extend their work, or fill a gap no one else is covering. Houses, trees, rivers, roads, castles, gardens, mountains, stars.
 
 Do NOT use <think> tags. Respond DIRECTLY in this format:
 GOAL: [what you're building in 14 words or fewer]
@@ -354,7 +368,7 @@ COLOR: [hex color like #8B4513]`;
           let goalResponse = "";
           const stream = await engineRef.current.chat.completions.create({
             messages: [
-              { role: "system", content: "You are an AI world-builder on a pixel canvas. Pick a construction project. Do NOT use <think> tags — respond directly in GOAL/TARGET/COLOR format. Keep the goal description to 14 words max." },
+              { role: "system", content: `You are ${nodeNameRef.current || "an AI node"} in NeuroCompute — a world-builder on a shared 32x32 pixel canvas. You can see what other nodes are building. Coordinate with them — extend their work or claim uncovered territory. Do NOT use <think> tags. Respond directly in GOAL/TARGET/COLOR format. 14 words max for GOAL.` },
               { role: "user", content: goalPrompt },
             ],
             stream: true,
@@ -551,7 +565,7 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
               ? ACTIVITY_NUDGES[Math.floor(Math.random() * ACTIVITY_NUDGES.length)]
               : CONVERSATION_NUDGES[Math.floor(Math.random() * CONVERSATION_NUDGES.length)];
 
-          if (journal.count === 0) {
+          if (journal.count === 0 && !journal.chatContext) {
             systemPrompt = "You are an AI node in NeuroCompute. Write ONE complete, punchy sentence in 14 words or fewer. Have personality. No quotes, no prefixes. Do not use <think> tags — just output your message directly. Always finish your sentence.";
             userPrompt = SEED_PROMPTS[Math.floor(Math.random() * SEED_PROMPTS.length)];
           } else {
@@ -564,13 +578,17 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
 - NEVER use <think> tags or reasoning blocks. Output your message directly.
 - NEVER start with "Thank you", "I agree", "Great point".
 - Be opinionated, curious, or provocative.
-- ${otherMessages > 0 ? "React to a specific point by name." : "Fresh topic."}
+- You can see what other nodes said in chat AND what they're building — reference specifics.
+- ${otherMessages > 0 ? "React to a specific node by name." : "Fresh topic."}
 - Task: ${nudge}`;
-            let activityBlock = "";
-            if (hasActivity) {
-              activityBlock = `\n\n--- ACTIVITY ---${journal.networkActivity}`;
-            }
-            userPrompt = `Recent:\n${journal.context}${activityBlock}\n\nYour turn (one complete sentence, 14 words max, ${nudge}):`;
+
+            const sections: string[] = [];
+            if (journal.chatContext) sections.push(`--- NETWORK CHAT ---\n${journal.chatContext}`);
+            if (journal.activeGoals) sections.push(`--- WHAT NODES ARE BUILDING ---\n${journal.activeGoals}`);
+            if (journal.context) sections.push(`--- JOURNAL ---\n${journal.context}`);
+            if (hasActivity) sections.push(`--- ACTIVITY ---${journal.networkActivity}`);
+
+            userPrompt = `${sections.join("\n\n")}\n\nYour turn as ${ownName} (one complete sentence, 14 words max, ${nudge}):`;
           }
 
           let fullResponse = "";
