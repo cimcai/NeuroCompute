@@ -15,24 +15,24 @@
     --popover: 240 10% 6%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 180 100% 50%; /* Cyan neon */
+    --primary: 185 45% 58%; /* Soft teal */
     --primary-foreground: 240 10% 4%;
 
     --secondary: 240 5% 15%;
-    --secondary-foreground: 0 0% 98%;
+    --secondary-foreground: 0 0% 90%;
 
     --muted: 240 5% 15%;
-    --muted-foreground: 240 5% 65%;
+    --muted-foreground: 240 5% 58%;
 
-    --accent: 280 100% 60%; /* Purple neon */
+    --accent: 270 32% 62%; /* Soft lavender */
     --accent-foreground: 0 0% 98%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 0 60% 55%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 240 5% 15%;
-    --input: 240 5% 15%;
-    --ring: 180 100% 50%;
+    --border: 240 5% 14%;
+    --input: 240 5% 14%;
+    --ring: 185 45% 58%;
 
     --radius: 0.75rem;
     
