@@ -14,7 +14,7 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Download, Shield, TrendingUp, AlertTriangle, Eye, Monitor, MessageSquare, Swords, Users, Radio, User, BookOpen } from "lucide-react";
+import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Download, Shield, TrendingUp, AlertTriangle, Eye, Monitor, MessageSquare, Swords, Users, Radio, User, BookOpen, Film } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "wouter";
@@ -26,10 +26,16 @@ export default function Dashboard() {
   const [downloadingProof, setDownloadingProof] = useState(false);
   const [hasWebGPU, setHasWebGPU] = useState<boolean | null>(null);
   const [showTimelapse, setShowTimelapse] = useState(() => !sessionStorage.getItem("neurocompute_timelapse_seen"));
+  const [timelapseKey, setTimelapseKey] = useState(0);
 
   const handleTimelapseComplete = useCallback(() => {
     sessionStorage.setItem("neurocompute_timelapse_seen", "1");
     setShowTimelapse(false);
+  }, []);
+
+  const handleReplayTimelapse = useCallback(() => {
+    setTimelapseKey(k => k + 1);
+    setShowTimelapse(true);
   }, []);
 
   const nodesQuery = useQuery<{ id: number; name: string; status: string; totalTokens: number }[]>({
@@ -254,9 +260,19 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr,340px] gap-4">
         <div className="space-y-4">
           {showTimelapse ? (
-            <CanvasTimelapse onComplete={handleTimelapseComplete} />
+            <CanvasTimelapse key={timelapseKey} onComplete={handleTimelapseComplete} />
           ) : (
-            <PixelCanvas nodeId={node.nodeId} autoFollow={true} />
+            <div className="relative">
+              <PixelCanvas nodeId={node.nodeId} autoFollow={true} />
+              <button
+                onClick={handleReplayTimelapse}
+                data-testid="button-replay-timelapse"
+                className="absolute bottom-3 right-3 flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono bg-black/70 backdrop-blur-sm border border-white/10 rounded-full text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors"
+              >
+                <Film className="w-3 h-3" />
+                Replay
+              </button>
+            </div>
           )}
         </div>
 
