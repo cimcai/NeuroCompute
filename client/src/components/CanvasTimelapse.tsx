@@ -22,7 +22,6 @@ interface CanvasTimelapseProps {
 export function CanvasTimelapse({ onComplete }: CanvasTimelapseProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [progress, setProgress] = useState(0);
-  const [totalPixels, setTotalPixels] = useState(0);
   const [loadedPixels, setLoadedPixels] = useState(0);
   const [currentAgent, setCurrentAgent] = useState("");
   const [currentCount, setCurrentCount] = useState(0);
@@ -31,6 +30,7 @@ export function CanvasTimelapse({ onComplete }: CanvasTimelapseProps) {
   const [error, setError] = useState(false);
 
   const pixelsRef = useRef<HistoryEntry[]>([]);
+  const totalPixelsRef = useRef(0);
   const streamDoneRef = useRef(false);
   const skippedRef = useRef(false);
   const animRef = useRef<number>(0);
@@ -57,7 +57,10 @@ export function CanvasTimelapse({ onComplete }: CanvasTimelapseProps) {
       if (!startTime) startTime = timestamp;
 
       const pixels = pixelsRef.current;
-      const total = streamDoneRef.current ? pixels.length : Math.max(pixels.length, totalPixels || pixels.length);
+      const knownTotal = totalPixelsRef.current;
+      const total = streamDoneRef.current
+        ? pixels.length
+        : Math.max(pixels.length, knownTotal || pixels.length);
       const elapsed = timestamp - startTime;
       const intervalMs = TOTAL_DURATION_MS / Math.max(total, 1);
       const targetIdx = Math.min(Math.floor(elapsed / intervalMs), pixels.length);
@@ -72,7 +75,7 @@ export function CanvasTimelapse({ onComplete }: CanvasTimelapseProps) {
         const last = pixels[idx - 1];
         setCurrentAgent(last.placedBy.replace(/^NeuroCompute-/, ""));
         setCurrentCount(idx);
-        setProgress((idx / Math.max(pixels.length, 1)) * 100);
+        setProgress((idx / Math.max(total, 1)) * 100);
       }
 
       if (streamDoneRef.current && idx >= pixels.length) {
@@ -84,7 +87,7 @@ export function CanvasTimelapse({ onComplete }: CanvasTimelapseProps) {
     };
 
     animRef.current = requestAnimationFrame(step);
-  }, [drawPixel, onComplete, totalPixels]);
+  }, [drawPixel, onComplete]);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,7 +118,9 @@ export function CanvasTimelapse({ onComplete }: CanvasTimelapseProps) {
                 pixelsRef.current = [...pixelsRef.current, ...chunk.pixels];
                 setLoadedPixels(pixelsRef.current.length);
               }
-              if (chunk.total) setTotalPixels(chunk.total);
+              if (chunk.total) {
+                totalPixelsRef.current = chunk.total;
+              }
               if (chunk.done) {
                 streamDoneRef.current = true;
                 setStreamDone(true);
@@ -215,7 +220,7 @@ export function CanvasTimelapse({ onComplete }: CanvasTimelapseProps) {
             )}
             <div className="bg-black/70 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-white/10">
               <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground mb-1">
-                <span>{currentCount.toLocaleString()} / {(totalPixels || loadedPixels).toLocaleString()} pixels</span>
+                <span>{currentCount.toLocaleString()} / {(totalPixelsRef.current || loadedPixels).toLocaleString()} pixels</span>
                 <div className="flex items-center gap-2">
                   {!streamDone && <span className="text-primary animate-pulse">streaming</span>}
                   <span>{Math.round(progress)}%</span>
