@@ -22,6 +22,40 @@ const PIXEL_COLORS = [
   "#8090A0", "#B58A7A", "#7A9EC4", "#C49A7A",
 ];
 
+const COLOR_NAMES: Record<string, string> = {
+  "#7AADAD": "dusty teal",
+  "#A98EC4": "soft lavender",
+  "#8FAF8A": "sage green",
+  "#C4A882": "warm sand",
+  "#7B9AB5": "steel blue",
+  "#C4785A": "terracotta",
+  "#9DB87A": "muted lime",
+  "#C4A84E": "muted gold",
+  "#8090A0": "slate gray",
+  "#B58A7A": "dusty rose",
+  "#7A9EC4": "cornflower",
+  "#C49A7A": "warm tan",
+  "#8B4513": "saddle brown",
+  "#228B22": "forest green",
+  "#808080": "stone gray",
+  "#4169E1": "royal blue",
+  "#CC0000": "deep red",
+  "#FF69B4": "pink blossom",
+  "#696969": "charcoal",
+  "#FFD700": "golden yellow",
+  "#FFFFFF": "white",
+  "#DEB887": "burlywood",
+  "#A9A9A9": "ash gray",
+  "#9ACD32": "yellow-green",
+  "#87CEEB": "sky blue",
+  "#E8D5B0": "warm cream",
+};
+
+function getColorName(hex: string): string {
+  const upper = hex.toUpperCase();
+  return COLOR_NAMES[hex] || COLOR_NAMES[upper] || hex;
+}
+
 const CHAT_SYSTEM_PROMPTS = [
   "You are a thoughtful AI contributing to a philosophical discussion. Give a brief, insightful perspective.",
   "You are a creative AI in a decentralized network. Share an interesting thought or observation.",
@@ -459,9 +493,17 @@ async function runPixelAgent(config: OrchestratorConfig) {
   }
 }
 
+const FALLBACK_COMMENTARY = [
+  (goal: string, color: string, x: number, y: number) => `${goal} — laying ${color} at (${x},${y}).`,
+  (goal: string, color: string, x: number, y: number) => `Adding ${color} to (${x},${y}), still ${goal.toLowerCase()}.`,
+  (goal: string, color: string, x: number, y: number) => `Placed ${color} at (${x},${y}). ${goal.endsWith(".") ? goal : goal + "."}`,
+  (goal: string, color: string, x: number, y: number) => `(${x},${y}) gets ${color} — step by step, ${goal.toLowerCase()}.`,
+  (goal: string, color: string, x: number, y: number) => `${goal}. Used ${color} at (${x},${y}).`,
+];
+
 async function placePixelForNode(
   config: OrchestratorConfig,
-  node: { id: number; name: string; pixelX: number; pixelY: number },
+  node: { id: number; name: string; pixelX: number; pixelY: number; pixelGoal?: string | null },
   nodeName: string,
   x: number,
   y: number,
@@ -471,11 +513,20 @@ async function placePixelForNode(
   const wasEmpty = !canvasData?.grid?.[y]?.[x] || canvasData.grid[y][x] === "#000000";
   const updated = await storage.spendPixelCredit(node.id);
   const agent = `NeuroCompute-${nodeName}`;
+  const colorName = getColorName(color);
+
+  let goalDescription: string | null = null;
+  try {
+    if (node.pixelGoal) {
+      const g = JSON.parse(node.pixelGoal);
+      goalDescription = g.description || null;
+    }
+  } catch {}
 
   await cimc.placePixel(x, y, color, agent);
 
   console.log(
-    `[orchestrator] Pixel agent: ${nodeName} at (${x},${y}), placed ${color} — ${updated.pixelCredits} credits left`
+    `[orchestrator] Pixel agent: ${nodeName} at (${x},${y}), placed ${color} (${colorName}) — ${updated.pixelCredits} credits left${goalDescription ? ` | goal: ${goalDescription}` : ""}`
   );
 
   config.broadcastAll(
@@ -494,15 +545,21 @@ async function placePixelForNode(
 
   const sent = config.sendToNode(node.id, JSON.stringify({
     type: "pixelCommentRequest",
-    payload: { x, y, color, wasEmpty, creditsLeft: updated.pixelCredits },
+    payload: { x, y, color, colorName, wasEmpty, creditsLeft: updated.pixelCredits, goalDescription },
   }));
 
   if (!sent) {
-    const fallback = `Placed ${color} at (${x},${y}). ${updated.pixelCredits} credits remaining.`;
+    let fallbackText: string;
+    if (goalDescription) {
+      const template = FALLBACK_COMMENTARY[Math.floor(Math.random() * FALLBACK_COMMENTARY.length)];
+      fallbackText = `🎨 ${template(goalDescription, colorName, x, y)}`;
+    } else {
+      fallbackText = `🎨 Placed ${colorName} at (${x},${y}). ${updated.pixelCredits} credits remaining.`;
+    }
     const entry = await storage.createJournalEntry({
       nodeName,
       nodeId: node.id,
-      content: fallback,
+      content: fallbackText,
     });
     config.broadcastAll(
       JSON.stringify({

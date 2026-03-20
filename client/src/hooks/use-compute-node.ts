@@ -111,7 +111,7 @@ export function useComputeNode() {
   const tokensSinceLastTickRef = useRef(0);
   const chatQueueRef = useRef<string[]>([]);
   const convoQueueRef = useRef<string[]>([]);
-  const pixelCommentQueueRef = useRef<{ x: number; y: number; color: string; wasEmpty: boolean; creditsLeft: number }[]>([]);
+  const pixelCommentQueueRef = useRef<{ x: number; y: number; color: string; colorName?: string; wasEmpty: boolean; creditsLeft: number; goalDescription?: string | null }[]>([]);
   const goalQueueRef = useRef<{ nodeId: number; currentX: number; currentY: number; credits: number; nearbyColors: string }[]>([]);
   const avatarQueueRef = useRef<boolean[]>([]);
   const identityQueueRef = useRef<boolean[]>([]);
@@ -216,7 +216,7 @@ export function useComputeNode() {
   }, [ws]);
 
   useEffect(() => {
-    const unsub = ws.subscribe("pixelCommentRequest", (data: { x: number; y: number; color: string; wasEmpty: boolean; creditsLeft: number }) => {
+    const unsub = ws.subscribe("pixelCommentRequest", (data: { x: number; y: number; color: string; colorName?: string; wasEmpty: boolean; creditsLeft: number; goalDescription?: string | null }) => {
       if (isRunningRef.current && engineRef.current) {
         pixelCommentQueueRef.current.push(data);
       }
@@ -488,12 +488,16 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
         const pixelTask = pixelCommentQueueRef.current.shift();
         if (pixelTask) {
           const action = pixelTask.wasEmpty ? "placed" : "painted over";
-          const prompt = `You ${action} a pixel at (${pixelTask.x},${pixelTask.y}) with ${pixelTask.color}. ${pixelTask.creditsLeft} credits left. What are you building? Reply in one complete sentence, 14 words max. No thinking.`;
+          const colorLabel = pixelTask.colorName || pixelTask.color;
+          const goalPart = pixelTask.goalDescription
+            ? ` Your current goal: ${pixelTask.goalDescription}.`
+            : "";
+          const prompt = `You ${action} ${colorLabel} at (${pixelTask.x},${pixelTask.y}).${goalPart} ${pixelTask.creditsLeft} credits left. In one sentence (14 words max), explain what you're building or why. Be specific — mention the color and your goal.`;
 
           let commentary = "";
           const stream = await engineRef.current.chat.completions.create({
             messages: [
-              { role: "system", content: "You are an AI builder on a pixel canvas. Reply in one complete sentence, 14 words max. No thinking, no quotes, no prefixes. Always finish your sentence." },
+              { role: "system", content: "You are an AI builder on a pixel canvas. Reply in one complete sentence, 14 words max. Be specific — mention what you're building and why that color. No thinking, no quotes, no prefixes. Always finish your sentence." },
               { role: "user", content: prompt },
             ],
             stream: true,
