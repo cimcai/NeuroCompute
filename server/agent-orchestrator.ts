@@ -155,7 +155,59 @@ function generateFallbackAvatar(): string[][] {
 }
 
 let lastSeenEntryId = 0;
+let lastSeenRoom1EntryId = 0;
 let activeBridgeSessionId: string | null = null;
+
+const SPIRITS_INTERVAL_MS = 60_000;
+
+async function runSpiritsAgent(config: OrchestratorConfig) {
+  try {
+    const data = await cimc.getConversation(1, 10);
+    if (!data?.entries?.length) return;
+
+    const maxId = Math.max(...data.entries.map((e) => e.id));
+
+    if (lastSeenRoom1EntryId === 0) {
+      lastSeenRoom1EntryId = maxId;
+      const latest = data.entries[data.entries.length - 1];
+      if (latest) {
+        console.log(`[spirits] Seeding with latest from ${latest.speaker}: "${latest.content.slice(0, 60)}..."`);
+        const saved = await storage.createMessage({
+          role: "spirit",
+          content: latest.content,
+          senderName: latest.speaker,
+        });
+        config.broadcastAll(
+          JSON.stringify({
+            type: "chatMessage",
+            payload: { id: saved.id, content: saved.content, senderName: saved.senderName, role: "spirit" },
+          })
+        );
+      }
+      return;
+    }
+
+    const newEntries = data.entries.filter((e) => e.id > lastSeenRoom1EntryId);
+    lastSeenRoom1EntryId = maxId;
+
+    for (const entry of newEntries) {
+      console.log(`[spirits] New message from ${entry.speaker}: "${entry.content.slice(0, 60)}..."`);
+      const saved = await storage.createMessage({
+        role: "spirit",
+        content: entry.content,
+        senderName: entry.speaker,
+      });
+      config.broadcastAll(
+        JSON.stringify({
+          type: "chatMessage",
+          payload: { id: saved.id, content: saved.content, senderName: saved.senderName, role: "spirit" },
+        })
+      );
+    }
+  } catch (err) {
+    logger.error("orchestrator", "Spirits agent error", err);
+  }
+}
 
 export function startOrchestrator(config: OrchestratorConfig) {
   console.log("[orchestrator] Agent orchestrator starting...");
@@ -164,17 +216,20 @@ export function startOrchestrator(config: OrchestratorConfig) {
   const convoTimer = setInterval(() => runConvoAgent(config), CONVO_INTERVAL_MS);
   const bridgeTimer = setInterval(() => runBridgeAgent(config), BRIDGE_INTERVAL_MS);
   const pixelTimer = setInterval(() => runPixelAgent(config), PIXEL_INTERVAL_MS);
+  const spiritsTimer = setInterval(() => runSpiritsAgent(config), SPIRITS_INTERVAL_MS);
 
   setTimeout(() => runChatAgent(config), 15_000);
   setTimeout(() => runConvoAgent(config), 20_000);
   setTimeout(() => runBridgeAgent(config), 30_000);
   setTimeout(() => runPixelAgent(config), 10_000);
+  setTimeout(() => runSpiritsAgent(config), 5_000);
 
-  console.log("[orchestrator] Timers set — chat 90s, convo 45s, bridge 120s, pixels 45s");
+  console.log("[orchestrator] Timers set — chat 90s, convo 45s, bridge 120s, pixels 45s, spirits 60s");
 
   return () => {
     clearInterval(chatTimer);
     clearInterval(convoTimer);
+    clearInterval(spiritsTimer);
     clearInterval(bridgeTimer);
     clearInterval(pixelTimer);
   };

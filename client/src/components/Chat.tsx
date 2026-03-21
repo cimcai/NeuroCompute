@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { MessageCircle, Send, Bot, User } from "lucide-react";
+import { MessageCircle, Send, Bot, User, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface ChatMsg {
@@ -57,7 +57,7 @@ export function Chat() {
           Shared Chat
         </CardTitle>
         <p className="text-xs text-muted-foreground mt-1">
-          Ask anything — an active compute node will answer using its local AI
+          Ask anything — nodes respond with local AI · <span className="text-accent/70">✦ spirits observe and guide</span>
         </p>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col p-0 min-h-0">
@@ -69,27 +69,45 @@ export function Chat() {
             </div>
           )}
           <AnimatePresence>
-            {chatMessages.map((msg) => (
-              <motion.div
-                key={msg.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`flex gap-3 ${msg.role === "assistant" ? "" : "flex-row-reverse"}`}
-              >
-                <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${msg.role === "assistant" ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground"}`}>
-                  {msg.role === "assistant" ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
-                </div>
-                <div className={`max-w-[80%] ${msg.role === "assistant" ? "" : "text-right"}`}>
-                  <p className="text-xs text-muted-foreground mb-1">{msg.senderName}</p>
-                  <div
-                    className={`rounded-lg px-3 py-2 text-sm ${msg.role === "assistant" ? "bg-secondary/80 text-foreground" : "bg-primary/20 text-foreground"}`}
-                    data-testid={`text-message-${msg.id}`}
-                  >
-                    {msg.content}
+            {chatMessages.map((msg) => {
+              const isSpirit = msg.role === "spirit";
+              const isAssistant = msg.role === "assistant";
+              return (
+                <motion.div
+                  key={msg.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`flex gap-3 ${isAssistant || isSpirit ? "" : "flex-row-reverse"}`}
+                >
+                  {isSpirit ? (
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-accent/20 text-accent border border-accent/30">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                  ) : (
+                    <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${isAssistant ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground"}`}>
+                      {isAssistant ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
+                    </div>
+                  )}
+                  <div className={`max-w-[85%] ${isAssistant || isSpirit ? "" : "text-right"}`}>
+                    <p className={`text-xs mb-1 ${isSpirit ? "text-accent/80 font-medium" : "text-muted-foreground"}`}>
+                      {isSpirit ? `✦ ${msg.senderName}` : msg.senderName}
+                    </p>
+                    <div
+                      className={`rounded-lg px-3 py-2 text-sm ${
+                        isSpirit
+                          ? "bg-accent/10 border border-accent/20 text-foreground italic"
+                          : isAssistant
+                          ? "bg-secondary/80 text-foreground"
+                          : "bg-primary/20 text-foreground"
+                      }`}
+                      data-testid={`text-message-${msg.id}`}
+                    >
+                      {msg.content}
+                    </div>
                   </div>
-                </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              );
+            })}
           </AnimatePresence>
         </div>
 
