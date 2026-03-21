@@ -493,13 +493,6 @@ async function runPixelAgent(config: OrchestratorConfig) {
   }
 }
 
-const FALLBACK_COMMENTARY = [
-  (goal: string, color: string, x: number, y: number) => `${goal} — laying ${color} at (${x},${y}).`,
-  (goal: string, color: string, x: number, y: number) => `Adding ${color} to (${x},${y}), still ${goal.toLowerCase()}.`,
-  (goal: string, color: string, x: number, y: number) => `Placed ${color} at (${x},${y}). ${goal.endsWith(".") ? goal : goal + "."}`,
-  (goal: string, color: string, x: number, y: number) => `(${x},${y}) gets ${color} — step by step, ${goal.toLowerCase()}.`,
-  (goal: string, color: string, x: number, y: number) => `${goal}. Used ${color} at (${x},${y}).`,
-];
 
 async function placePixelForNode(
   config: OrchestratorConfig,
@@ -549,28 +542,10 @@ async function placePixelForNode(
   }));
 
   if (!sent) {
-    let fallbackText: string;
-    if (goalDescription) {
-      const template = FALLBACK_COMMENTARY[Math.floor(Math.random() * FALLBACK_COMMENTARY.length)];
-      fallbackText = `🎨 ${template(goalDescription, colorName, x, y)}`;
-    } else {
-      fallbackText = `🎨 Placed ${colorName} at (${x},${y}). ${updated.pixelCredits} credits remaining.`;
-    }
-    const entry = await storage.createJournalEntry({
-      nodeName,
-      nodeId: node.id,
-      content: fallbackText,
-    });
     config.broadcastAll(
       JSON.stringify({
-        type: "journalEntry",
-        payload: {
-          id: entry.id,
-          nodeName: entry.nodeName,
-          nodeId: entry.nodeId,
-          content: entry.content,
-          createdAt: entry.createdAt.toISOString(),
-        },
+        type: "pixelObservationRequest",
+        payload: { placerName: nodeName, x, y, colorName, goalDescription },
       })
     );
   }

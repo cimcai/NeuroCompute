@@ -112,6 +112,7 @@ export function useComputeNode() {
   const chatQueueRef = useRef<string[]>([]);
   const convoQueueRef = useRef<string[]>([]);
   const pixelCommentQueueRef = useRef<{ x: number; y: number; color: string; colorName?: string; wasEmpty: boolean; creditsLeft: number; goalDescription?: string | null }[]>([]);
+  const pixelObservationQueueRef = useRef<{ placerName: string; x: number; y: number; colorName: string; goalDescription?: string | null }[]>([]);
   const goalQueueRef = useRef<{ nodeId: number; currentX: number; currentY: number; credits: number; nearbyColors: string }[]>([]);
   const avatarQueueRef = useRef<boolean[]>([]);
   const identityQueueRef = useRef<boolean[]>([]);
@@ -219,6 +220,15 @@ export function useComputeNode() {
     const unsub = ws.subscribe("pixelCommentRequest", (data: { x: number; y: number; color: string; colorName?: string; wasEmpty: boolean; creditsLeft: number; goalDescription?: string | null }) => {
       if (isRunningRef.current && engineRef.current) {
         pixelCommentQueueRef.current.push(data);
+      }
+    });
+    return unsub;
+  }, [ws]);
+
+  useEffect(() => {
+    const unsub = ws.subscribe("pixelObservationRequest", (data: { placerName: string; x: number; y: number; colorName: string; goalDescription?: string | null }) => {
+      if (isRunningRef.current && engineRef.current && Math.random() < 0.3 && pixelObservationQueueRef.current.length < 2) {
+        pixelObservationQueueRef.current.push(data);
       }
     });
     return unsub;
@@ -517,6 +527,38 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
           if (cleaned && nodeIdRef.current && nodeNameRef.current) {
             ws.emit("journalEntry", {
               content: `🎨 (${pixelTask.x},${pixelTask.y}) ${cleaned}`,
+              nodeName: nodeNameRef.current,
+              nodeId: nodeIdRef.current,
+            });
+          }
+          continue;
+        }
+
+        const obsTask = pixelObservationQueueRef.current.shift();
+        if (obsTask) {
+          const goalPart = obsTask.goalDescription ? `, apparently toward a goal of "${obsTask.goalDescription}"` : "";
+          const prompt = `You just saw ${obsTask.placerName} place ${obsTask.colorName} at (${obsTask.x},${obsTask.y})${goalPart}. As a fellow node watching the canvas, what's your reaction or take? One complete sentence, 14 words max.`;
+          let obs = "";
+          const stream = await engineRef.current.chat.completions.create({
+            messages: [
+              { role: "system", content: "You are an AI node in a pixel world. Comment briefly on what you just witnessed on the canvas. One complete sentence, 14 words max. Be opinionated, curious, or specific. No thinking, no quotes, no prefixes. Always finish your sentence." },
+              { role: "user", content: prompt },
+            ],
+            stream: true,
+            max_tokens: 50,
+            temperature: 1.1,
+          });
+          for await (const chunk of stream) {
+            if (!isRunningRef.current) break;
+            const content = chunk.choices[0]?.delta?.content || "";
+            obs += content;
+            setSessionTokens((prev) => prev + 1);
+            tokensSinceLastTickRef.current += 1;
+          }
+          const cleaned = capWords(obs.trim().replace(/^\[?[\w-]+\]?:?\s*/, ""), 14);
+          if (cleaned && nodeIdRef.current && nodeNameRef.current) {
+            ws.emit("journalEntry", {
+              content: `👁 ${cleaned}`,
               nodeName: nodeNameRef.current,
               nodeId: nodeIdRef.current,
             });
