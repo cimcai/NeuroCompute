@@ -124,6 +124,15 @@ export async function takeSnapshot(report: ReportData): Promise<void> {
   logger.info("analytics", `Snapshot taken for ${report.snapshotDate} (${report.frequency})`);
 }
 
+function escHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function renderEmailHtml(report: ReportData): string {
   const fmt = (n: number) => n.toLocaleString("en-US");
   const fmtSec = (s: number) => {
@@ -142,7 +151,7 @@ export function renderEmailHtml(report: ReportData): string {
       (c, i) => `
       <tr>
         <td style="padding:6px 10px;color:#c4a882;font-family:monospace">${i + 1}</td>
-        <td style="padding:6px 10px;color:#e8d5b0">${c.nodeName}</td>
+        <td style="padding:6px 10px;color:#e8d5b0">${escHtml(c.nodeName)}</td>
         <td style="padding:6px 10px;color:#7aadad;text-align:right;font-family:monospace">+${fmt(c.periodTokens)}</td>
         <td style="padding:6px 10px;color:#a98ec4;text-align:right;font-family:monospace">${fmt(c.pixelsPlaced)}</td>
       </tr>`

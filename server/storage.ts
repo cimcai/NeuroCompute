@@ -31,7 +31,6 @@ export interface IStorage {
   getRegionsWithSubPixels(): Promise<{ regionX: number; regionY: number; count: number }[]>;
   createSnapshot(snap: InsertDailySnapshot): Promise<DailySnapshot>;
   getLatestSnapshot(): Promise<DailySnapshot | undefined>;
-  getTopContributors(limit?: number): Promise<{ nodeId: number; nodeName: string; totalTokens: number; pixelsPlaced: number }[]>;
   getMessageCount(): Promise<number>;
 }
 
@@ -272,20 +271,6 @@ export class DatabaseStorage implements IStorage {
   async getLatestSnapshot(): Promise<DailySnapshot | undefined> {
     const [snap] = await db.select().from(dailySnapshots).orderBy(desc(dailySnapshots.createdAt)).limit(1);
     return snap;
-  }
-
-  async getTopContributors(limit = 5): Promise<{ nodeId: number; nodeName: string; totalTokens: number; pixelsPlaced: number }[]> {
-    const allNodes = await db
-      .select({ id: nodes.id, name: nodes.name, displayName: nodes.displayName, totalTokens: nodes.totalTokens, pixelsPlaced: nodes.pixelsPlaced })
-      .from(nodes)
-      .orderBy(desc(nodes.totalTokens))
-      .limit(limit);
-    return allNodes.map(n => ({
-      nodeId: n.id,
-      nodeName: n.displayName || n.name,
-      totalTokens: n.totalTokens,
-      pixelsPlaced: n.pixelsPlaced,
-    }));
   }
 
   async getMessageCount(): Promise<number> {
