@@ -210,6 +210,9 @@ async function runSpiritsAgent(config: OrchestratorConfig) {
   }
 }
 
+let reportInitTimeout: ReturnType<typeof setTimeout> | null = null;
+let reportRepeatInterval: ReturnType<typeof setInterval> | null = null;
+
 function scheduleDailyReport() {
   const frequency = getReportFrequency();
   const intervalMs = getIntervalMs();
@@ -229,9 +232,9 @@ function scheduleDailyReport() {
     }
   };
 
-  setTimeout(() => {
+  reportInitTimeout = setTimeout(() => {
     runReport();
-    setInterval(runReport, intervalMs);
+    reportRepeatInterval = setInterval(runReport, intervalMs);
   }, msUntilFirst);
 }
 
@@ -260,6 +263,8 @@ export function startOrchestrator(config: OrchestratorConfig) {
     clearInterval(spiritsTimer);
     clearInterval(bridgeTimer);
     clearInterval(pixelTimer);
+    if (reportInitTimeout) clearTimeout(reportInitTimeout);
+    if (reportRepeatInterval) clearInterval(reportRepeatInterval);
   };
 }
 

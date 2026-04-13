@@ -75,7 +75,7 @@ export async function buildReport(): Promise<ReportData> {
       totalTokens: n.totalTokens,
       pixelsPlaced: n.pixelsPlaced,
     }))
-    .filter(c => c.totalTokens > 0)
+    .filter(c => c.periodTokens > 0)
     .sort((a, b) => b.periodTokens - a.periodTokens)
     .slice(0, 5);
 
@@ -272,6 +272,8 @@ export async function sendReportEmail(report: ReportData): Promise<boolean> {
   const subject = `${label} NeuroCompute Report — ${report.snapshotDate} | ${report.activeNodes} nodes active`;
 
   try {
+    const fromEmail = process.env.REPORT_FROM_EMAIL || "NeuroCompute <onboarding@resend.dev>";
+
     const resp = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -279,7 +281,7 @@ export async function sendReportEmail(report: ReportData): Promise<boolean> {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "NeuroCompute <reports@neurocompute.replit.app>",
+        from: fromEmail,
         to: [toEmail],
         subject,
         html,
