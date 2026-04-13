@@ -69,6 +69,23 @@ export const insertBridgeGameSchema = createInsertSchema(bridgeGames).omit({ id:
 export type BridgeGame = typeof bridgeGames.$inferSelect;
 export type InsertBridgeGame = z.infer<typeof insertBridgeGameSchema>;
 
+export const subPixels = pgTable("sub_pixels", {
+  id: serial("id").primaryKey(),
+  regionX: integer("region_x").notNull(),
+  regionY: integer("region_y").notNull(),
+  subX: integer("sub_x").notNull(),
+  subY: integer("sub_y").notNull(),
+  color: text("color").notNull(),
+  nodeId: integer("node_id"),
+  nodeName: text("node_name").notNull(),
+  placedAt: timestamp("placed_at").defaultNow().notNull(),
+});
+
+export const insertSubPixelSchema = createInsertSchema(subPixels).omit({ id: true, placedAt: true });
+
+export type SubPixel = typeof subPixels.$inferSelect;
+export type InsertSubPixel = z.infer<typeof insertSubPixelSchema>;
+
 export const journalEntries = pgTable("journal_entries", {
   id: serial("id").primaryKey(),
   nodeName: text("node_name").notNull(),

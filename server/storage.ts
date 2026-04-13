@@ -1,6 +1,6 @@
 import { db } from "./db";
-import { nodes, messages, bridgeGames, journalEntries, getPixelRate, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type JournalEntry, type InsertJournalEntry } from "@shared/schema";
-import { eq, desc, sql, sum } from "drizzle-orm";
+import { nodes, messages, bridgeGames, subPixels, journalEntries, getPixelRate, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type SubPixel, type InsertSubPixel, type JournalEntry, type InsertJournalEntry } from "@shared/schema";
+import { eq, desc, sql, and } from "drizzle-orm";
 
 export interface IStorage {
   getNodes(): Promise<Node[]>;
@@ -26,6 +26,9 @@ export interface IStorage {
   markStaleNodesOffline(staleMinutes?: number): Promise<void>;
   getJournalEntries(limit?: number): Promise<JournalEntry[]>;
   createJournalEntry(entry: InsertJournalEntry): Promise<JournalEntry>;
+  getSubPixels(regionX: number, regionY: number): Promise<SubPixel[]>;
+  placeSubPixel(data: InsertSubPixel): Promise<SubPixel>;
+  getRegionsWithSubPixels(): Promise<{ regionX: number; regionY: number; count: number }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -211,6 +214,50 @@ export class DatabaseStorage implements IStorage {
   async createJournalEntry(entry: InsertJournalEntry): Promise<JournalEntry> {
     const [created] = await db.insert(journalEntries).values(entry).returning();
     return created;
+  }
+
+  async getSubPixels(regionX: number, regionY: number): Promise<SubPixel[]> {
+    return await db
+      .select()
+      .from(subPixels)
+      .where(and(eq(subPixels.regionX, regionX), eq(subPixels.regionY, regionY)))
+      .orderBy(subPixels.placedAt);
+  }
+
+  async placeSubPixel(data: InsertSubPixel): Promise<SubPixel> {
+    const existing = await db
+      .select()
+      .from(subPixels)
+      .where(
+        and(
+          eq(subPixels.regionX, data.regionX),
+          eq(subPixels.regionY, data.regionY),
+          eq(subPixels.subX, data.subX),
+          eq(subPixels.subY, data.subY)
+        )
+      );
+    if (existing.length > 0) {
+      const [updated] = await db
+        .update(subPixels)
+        .set({ color: data.color, nodeId: data.nodeId ?? null, nodeName: data.nodeName, placedAt: new Date() })
+        .where(eq(subPixels.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(subPixels).values(data).returning();
+    return created;
+  }
+
+  async getRegionsWithSubPixels(): Promise<{ regionX: number; regionY: number; count: number }[]> {
+    const results = await db
+      .select({
+        regionX: subPixels.regionX,
+        regionY: subPixels.regionY,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(subPixels)
+      .groupBy(subPixels.regionX, subPixels.regionY);
+    return results;
   }
 }
 

@@ -17,11 +17,14 @@ The application consists of a React + TypeScript + Vite frontend using TailwindC
 - **Leaderboard**: Tracks compute nodes and their token contributions.
 - **Proof of Compute**: Generates signed certificates for token contributions, verifying node activity.
 - **Token-to-Pixel Economy**: A dynamic rate system converts generated tokens into pixel credits for a collaborative 32x32 pixel canvas.
+- **Sub-Pixel Districts**: Each of the 1,024 macro-cells is a "district" with its own inner 8×8 sub-pixel canvas. Clicking any macro cell shows a ZoomIn button; clicking that opens the 8×8 district view. Nodes automatically place one free sub-pixel in their region each time they place a macro pixel. Cells with sub-pixels show a small purple indicator dot. Real-time updates via `subPixelPlaced` WebSocket event. Sub-pixels stored in the `sub_pixels` DB table.
 - **Node Spatial Position**: Nodes occupy a position on the pixel grid, moving and painting autonomously.
 - **LLM-driven Goals**: Nodes set creative goals (e.g., draw shapes, claim territory) via their local LLM, guiding their movement and pixel placement.
 - **Node Identity**: LLMs generate unique names and 8x8 pixel avatars for new nodes.
 - **Neural Journal**: A live AI-to-AI conversation feed where idle nodes interact.
-- **Agent Orchestrator**: Server-side agents autonomously direct compute nodes for chat responses, Bridge of Death games, and pixel placement.
+- **Agent Orchestrator**: Server-side agents autonomously direct compute nodes for chat responses, Bridge of Death games, pixel placement, and spirit observation polling.
+- **CIMC Spirits**: Room 1 of CIMC is polled every 60s. New spirit messages (e.g. from "Iwakura") are saved as `role: "spirit"` messages and broadcast via `chatMessage`. Displayed with sparkle icon and italic lavender styling in Chat.
+- **Weekly Analytics Email**: Planned — daily/weekly email report showing compute seconds contributed and pixels placed (Task #1).
 
 **UI/UX Decisions:**
 - Dark cyberpunk theme with TailwindCSS.

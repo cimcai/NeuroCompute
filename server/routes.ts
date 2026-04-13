@@ -720,6 +720,31 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/canvas/sub", async (req, res) => {
+    try {
+      const rx = Number(req.query.rx);
+      const ry = Number(req.query.ry);
+      if (isNaN(rx) || isNaN(ry) || rx < 0 || rx > 31 || ry < 0 || ry > 31) {
+        return res.status(400).json({ message: "rx and ry must be 0–31" });
+      }
+      const pixels = await storage.getSubPixels(rx, ry);
+      res.json({ regionX: rx, regionY: ry, pixels });
+    } catch (err) {
+      console.error("Sub-pixel fetch error:", err);
+      res.status(500).json({ message: "Failed to fetch sub-pixels" });
+    }
+  });
+
+  app.get("/api/canvas/sub/regions", async (req, res) => {
+    try {
+      const regions = await storage.getRegionsWithSubPixels();
+      res.json({ regions });
+    } catch (err) {
+      console.error("Sub-pixel regions error:", err);
+      res.status(500).json({ message: "Failed to fetch sub-pixel regions" });
+    }
+  });
+
   app.get("/api/canvas/credits/:nodeId", async (req, res) => {
     try {
       const node = await storage.getNode(Number(req.params.nodeId));

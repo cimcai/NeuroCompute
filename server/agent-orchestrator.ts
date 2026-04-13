@@ -604,4 +604,26 @@ async function placePixelForNode(
       })
     );
   }
+
+  const subX = Math.floor(Math.random() * 8);
+  const subY = Math.floor(Math.random() * 8);
+  try {
+    const sp = await storage.placeSubPixel({
+      regionX: x,
+      regionY: y,
+      subX,
+      subY,
+      color,
+      nodeId: node.id,
+      nodeName,
+    });
+    config.broadcastAll(
+      JSON.stringify({
+        type: "subPixelPlaced",
+        payload: { id: sp.id, regionX: x, regionY: y, subX, subY, color, nodeName, nodeId: node.id },
+      })
+    );
+  } catch (spErr) {
+    logger.error("orchestrator", "Sub-pixel placement failed", spErr);
+  }
 }

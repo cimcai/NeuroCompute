@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { Coins, Paintbrush, Minus, Plus, RotateCcw, MapPin, Info, Crosshair, X, MessageCircle } from "lucide-react";
+import { Coins, Paintbrush, Minus, Plus, RotateCcw, MapPin, Crosshair, X, MessageCircle, ZoomIn, Grid3X3 } from "lucide-react";
 
 const CANVAS_SIZE = 32;
 const CELL_SIZE = 16;
@@ -56,6 +56,8 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
   const [nodeAvatars, setNodeAvatars] = useState<Map<number, AvatarGrid>>(new Map());
   const [following, setFollowing] = useState(autoFollow);
   const [selectedPixel, setSelectedPixel] = useState<{ x: number; y: number } | null>(null);
+  const [zoomedRegion, setZoomedRegion] = useState<{ x: number; y: number } | null>(null);
+  const [liveSubPixels, setLiveSubPixels] = useState<Map<string, { color: string; nodeName: string }>>(new Map());
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const mouseDownPosRef = useRef({ x: 0, y: 0 });
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -91,6 +93,22 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
       return res.json();
     },
     enabled: selectedPixel !== null,
+  });
+
+  const regionsQuery = useQuery<{ regions: { regionX: number; regionY: number; count: number }[] }>({
+    queryKey: ["/api/canvas/sub/regions"],
+    refetchInterval: 30000,
+  });
+
+  const subPixelQuery = useQuery<{ regionX: number; regionY: number; pixels: { id: number; subX: number; subY: number; color: string; nodeName: string }[] }>({
+    queryKey: ["/api/canvas/sub", zoomedRegion?.x, zoomedRegion?.y],
+    queryFn: async () => {
+      if (!zoomedRegion) return { regionX: 0, regionY: 0, pixels: [] };
+      const res = await fetch(`/api/canvas/sub?rx=${zoomedRegion.x}&ry=${zoomedRegion.y}`);
+      if (!res.ok) throw new Error("Failed to fetch sub-pixels");
+      return res.json();
+    },
+    enabled: zoomedRegion !== null,
   });
 
   useEffect(() => {
@@ -183,6 +201,29 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
     });
     return unsub;
   }, [ws]);
+
+  useEffect(() => {
+    const unsub = ws.subscribe("subPixelPlaced", (data: { regionX: number; regionY: number; subX: number; subY: number; color: string; nodeName: string }) => {
+      if (zoomedRegion && data.regionX === zoomedRegion.x && data.regionY === zoomedRegion.y) {
+        setLiveSubPixels(prev => {
+          const next = new Map(prev);
+          next.set(`${data.subX}:${data.subY}`, { color: data.color, nodeName: data.nodeName });
+          return next;
+        });
+      }
+    });
+    return unsub;
+  }, [ws, zoomedRegion]);
+
+  useEffect(() => {
+    if (subPixelQuery.data?.pixels) {
+      const m = new Map<string, { color: string; nodeName: string }>();
+      for (const p of subPixelQuery.data.pixels) {
+        m.set(`${p.subX}:${p.subY}`, { color: p.color, nodeName: p.nodeName });
+      }
+      setLiveSubPixels(m);
+    }
+  }, [subPixelQuery.data]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -470,6 +511,18 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
       }
     });
 
+    const regionsWithSub = regionsQuery.data?.regions;
+    if (regionsWithSub && regionsWithSub.length > 0) {
+      for (const region of regionsWithSub) {
+        const rx = region.regionX * CELL_SIZE;
+        const ry = region.regionY * CELL_SIZE;
+        ctx.fillStyle = "rgba(180, 140, 255, 0.7)";
+        ctx.beginPath();
+        ctx.arc(rx + CELL_SIZE - 3.5, ry + 3.5, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
     if (selectedPixel) {
       ctx.strokeStyle = "rgba(59,130,246,0.9)";
       ctx.lineWidth = 2;
@@ -486,7 +539,7 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
     }
 
     ctx.restore();
-  }, [canvasQuery.data, hoveredCell, selectedPixel, zoom, pan, myPos, nodePositions, nodeId, speechBubbles, nodeGoals, nodeAvatars]);
+  }, [canvasQuery.data, hoveredCell, selectedPixel, zoom, pan, myPos, nodePositions, nodeId, speechBubbles, nodeGoals, nodeAvatars, regionsQuery.data]);
 
   useEffect(() => {
     drawCanvas();
@@ -643,8 +696,8 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
             </div>
           )}
 
-          {selectedPixel && (
-            <div className="absolute top-2 right-2 w-64 max-h-[50%] bg-black/85 backdrop-blur-md rounded-lg border border-white/10 overflow-hidden flex flex-col" data-testid="panel-pixel-history">
+          {selectedPixel && !zoomedRegion && (
+            <div className="absolute top-2 right-2 w-64 max-h-[60%] bg-black/85 backdrop-blur-md rounded-lg border border-white/10 overflow-hidden flex flex-col" data-testid="panel-pixel-history">
               <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 shrink-0">
                 <div className="flex items-center gap-2">
                   <MessageCircle className="w-3.5 h-3.5 text-primary" />
@@ -655,9 +708,21 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
                     <span className="w-3 h-3 rounded-sm border border-white/20" style={{ backgroundColor: canvasQuery.data.grid[selectedPixel.y][selectedPixel.x] }} />
                   )}
                 </div>
-                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setSelectedPixel(null)} data-testid="button-close-pixel-history">
-                  <X className="w-3 h-3" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 text-accent hover:text-accent/80"
+                    onClick={() => setZoomedRegion({ x: selectedPixel.x, y: selectedPixel.y })}
+                    title="Zoom into district"
+                    data-testid="button-zoom-district"
+                  >
+                    <ZoomIn className="w-3 h-3" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setSelectedPixel(null)} data-testid="button-close-pixel-history">
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
               </div>
               <div className="overflow-y-auto flex-1 px-3 py-2 space-y-2">
                 {pixelHistoryQuery.isLoading ? (
@@ -676,6 +741,70 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
                   ))
                 )}
               </div>
+              <div className="px-3 py-1.5 border-t border-white/5 shrink-0">
+                <button
+                  className="w-full text-[10px] text-accent/70 hover:text-accent flex items-center justify-center gap-1 py-0.5"
+                  onClick={() => setZoomedRegion({ x: selectedPixel.x, y: selectedPixel.y })}
+                  data-testid="button-zoom-district-footer"
+                >
+                  <ZoomIn className="w-2.5 h-2.5" />
+                  Zoom into district ({selectedPixel.x},{selectedPixel.y})
+                </button>
+              </div>
+            </div>
+          )}
+
+          {zoomedRegion && (
+            <div className="absolute inset-2 bg-black/92 backdrop-blur-md rounded-lg border border-accent/30 flex flex-col overflow-hidden" data-testid="panel-sub-canvas">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-accent/20 shrink-0">
+                <div className="flex items-center gap-2">
+                  <Grid3X3 className="w-3.5 h-3.5 text-accent" />
+                  <span className="text-xs font-mono text-foreground">
+                    District ({zoomedRegion.x},{zoomedRegion.y})
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">8×8 sub-pixels</span>
+                  {canvasQuery.data?.grid?.[zoomedRegion.y]?.[zoomedRegion.x] && (
+                    <span className="w-3 h-3 rounded-sm border border-white/20" style={{ backgroundColor: canvasQuery.data.grid[zoomedRegion.y][zoomedRegion.x] }} />
+                  )}
+                </div>
+                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setZoomedRegion(null)} data-testid="button-close-sub-canvas">
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+              <div className="flex-1 flex items-center justify-center p-4">
+                <div className="flex flex-col gap-0.5">
+                  {Array.from({ length: 8 }, (_, sy) => (
+                    <div key={sy} className="flex gap-0.5">
+                      {Array.from({ length: 8 }, (_, sx) => {
+                        const key = `${sx}:${sy}`;
+                        const sp = liveSubPixels.get(key);
+                        return (
+                          <div
+                            key={sx}
+                            title={sp ? `${sp.nodeName}` : "Empty"}
+                            data-testid={`sub-pixel-${sx}-${sy}`}
+                            className="w-8 h-8 rounded-sm border transition-all duration-300"
+                            style={{
+                              backgroundColor: sp ? sp.color : "rgba(255,255,255,0.04)",
+                              borderColor: sp ? `${sp.color}44` : "rgba(255,255,255,0.08)",
+                              boxShadow: sp ? `0 0 6px ${sp.color}33` : "none",
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="px-3 py-2 border-t border-accent/10 shrink-0">
+                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                  <span>
+                    <span className="text-foreground font-semibold">{liveSubPixels.size}</span> / 64 sub-pixels painted
+                  </span>
+                  {subPixelQuery.isLoading && <span className="text-accent/50 animate-pulse">Loading...</span>}
+                  <span className="text-accent/50">· nodes paint here automatically</span>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -690,7 +819,7 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
                   {currentPixelColor}
                 </span>
               )}
-              <span className="ml-2 text-muted-foreground/50">click for history</span>
+              <span className="ml-2 text-muted-foreground/50">click → history + district view</span>
             </span>
           </div>
         )}

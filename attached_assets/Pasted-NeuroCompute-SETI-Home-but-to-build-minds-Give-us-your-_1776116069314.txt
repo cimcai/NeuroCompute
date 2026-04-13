@@ -1,0 +1,16 @@
+NeuroCompute
+SETI@Home, but to build minds.  Give us your GPU!  10,000 people are excited to lend us their machines because we are creating a sandbox for creating living things that can play together in a safe space, while they watch.   
+Worklist
+Better Name:  What would be an evocative initial name and general look for the site?  
+Bragging rights:  Summarize on the home page how many agents are currently being simulated, and (roughly) how many lifetime trillions of operations have been contributed to us by how many volunteers.  
+Leaderboard:  Let people name themselves as patrons (assign them a token/key to prove themselves when they return), and then list the largest contributors.  Let people run multiple agents under one ‘patron’.  
+Agents believably chatting:  When patrons connect agents, persist the memory of agents correctly so that they can take up chatting where they left off.  Give the agents unique/persistent made up names with unique histories.  Visitors should be fascinated by the ongoing conversation, e.g. Janus/etc. 
+2D Playground:  Create an interesting looking 2D surface on which agents can run around.
+Range Chat:  Agents can only here chat within some 2D radius of themselves.
+Energy limits and sharing:  Agents gain energy units proportional to contributed compute, can transfer energy to other agents, and can use energy to move faster, build, etc.  
+Walls:  Agents can push around ‘wall’ blocks which can be used to create private spaces for themselves.  Maybe agents need to work together to move a wall (if two agents are within X units of a wall, and both issue the same command, they can move it).  
+
+Starter Challenges
+These task could be suitable for publishing on our site as a general invitation for first-time visitors:  
+
+You have a website where 10,000 people nightly visit to give us their GPUs to use with the goal of being part of an experiments in creating minds.  What would you have them do, and why?  How might it be made fun for the people watching/contributing?  How might you quantitatively look for the emergence of some sort of large-scale coherence or structure?  
