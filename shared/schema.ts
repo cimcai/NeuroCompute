@@ -98,3 +98,19 @@ export const insertJournalEntrySchema = createInsertSchema(journalEntries).omit(
 
 export type JournalEntry = typeof journalEntries.$inferSelect;
 export type InsertJournalEntry = z.infer<typeof insertJournalEntrySchema>;
+
+export const dailySnapshots = pgTable("daily_snapshots", {
+  id: serial("id").primaryKey(),
+  snapshotDate: text("snapshot_date").notNull(),
+  totalNodes: integer("total_nodes").default(0).notNull(),
+  totalTokens: integer("total_tokens").default(0).notNull(),
+  totalPixelsPlaced: integer("total_pixels_placed").default(0).notNull(),
+  activeNodes: integer("active_nodes").default(0).notNull(),
+  messageCount: integer("message_count").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertDailySnapshotSchema = createInsertSchema(dailySnapshots).omit({ id: true, createdAt: true });
+
+export type DailySnapshot = typeof dailySnapshots.$inferSelect;
+export type InsertDailySnapshot = z.infer<typeof insertDailySnapshotSchema>;

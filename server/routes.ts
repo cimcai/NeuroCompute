@@ -8,6 +8,7 @@ import { z } from "zod";
 import * as cimc from "./cimc";
 import { startOrchestrator } from "./agent-orchestrator";
 import { logger } from "./logger";
+import { runDailyReport, buildReport, renderEmailHtml } from "./analytics";
 
 let pixelHistoryCache: any[] = [];
 let pixelCacheTotal = 0;
@@ -742,6 +743,40 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Sub-pixel regions error:", err);
       res.status(500).json({ message: "Failed to fetch sub-pixel regions" });
+    }
+  });
+
+  app.get("/api/admin/send-report", async (req, res) => {
+    try {
+      const adminSecret = process.env.ADMIN_SECRET;
+      const provided = req.query.secret as string | undefined;
+      if (adminSecret && provided !== adminSecret) {
+        return res.status(401).json({ message: "Unauthorized — invalid or missing secret" });
+      }
+      const preview = req.query.preview === "true";
+      if (preview) {
+        const report = await buildReport();
+        const html = renderEmailHtml(report);
+        res.setHeader("Content-Type", "text/html");
+        return res.send(html);
+      }
+      const result = await runDailyReport();
+      res.json({
+        success: result.success,
+        emailSent: result.emailSent,
+        report: {
+          snapshotDate: result.report.snapshotDate,
+          periodLabel: result.report.periodLabel,
+          totalNodes: result.report.totalNodes,
+          activeNodes: result.report.activeNodes,
+          computeSecondsDelta: result.report.computeSecondsDelta,
+          pixelDelta: result.report.pixelDelta,
+          tokenDelta: result.report.tokenDelta,
+        },
+      });
+    } catch (err) {
+      logger.error("api", "Admin send-report error", err);
+      res.status(500).json({ message: "Failed to run report" });
     }
   });
 

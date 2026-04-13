@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { nodes, messages, bridgeGames, subPixels, journalEntries, getPixelRate, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type SubPixel, type InsertSubPixel, type JournalEntry, type InsertJournalEntry } from "@shared/schema";
+import { nodes, messages, bridgeGames, subPixels, journalEntries, dailySnapshots, getPixelRate, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type SubPixel, type InsertSubPixel, type JournalEntry, type InsertJournalEntry, type DailySnapshot, type InsertDailySnapshot } from "@shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 
 export interface IStorage {
@@ -29,6 +29,10 @@ export interface IStorage {
   getSubPixels(regionX: number, regionY: number): Promise<SubPixel[]>;
   placeSubPixel(data: InsertSubPixel): Promise<SubPixel>;
   getRegionsWithSubPixels(): Promise<{ regionX: number; regionY: number; count: number }[]>;
+  createSnapshot(snap: InsertDailySnapshot): Promise<DailySnapshot>;
+  getLatestSnapshot(): Promise<DailySnapshot | undefined>;
+  getTopContributors(limit?: number): Promise<{ nodeId: number; nodeName: string; totalTokens: number; pixelsPlaced: number }[]>;
+  getMessageCount(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -258,6 +262,35 @@ export class DatabaseStorage implements IStorage {
       .from(subPixels)
       .groupBy(subPixels.regionX, subPixels.regionY);
     return results;
+  }
+
+  async createSnapshot(snap: InsertDailySnapshot): Promise<DailySnapshot> {
+    const [created] = await db.insert(dailySnapshots).values(snap).returning();
+    return created;
+  }
+
+  async getLatestSnapshot(): Promise<DailySnapshot | undefined> {
+    const [snap] = await db.select().from(dailySnapshots).orderBy(desc(dailySnapshots.createdAt)).limit(1);
+    return snap;
+  }
+
+  async getTopContributors(limit = 5): Promise<{ nodeId: number; nodeName: string; totalTokens: number; pixelsPlaced: number }[]> {
+    const allNodes = await db
+      .select({ id: nodes.id, name: nodes.name, displayName: nodes.displayName, totalTokens: nodes.totalTokens, pixelsPlaced: nodes.pixelsPlaced })
+      .from(nodes)
+      .orderBy(desc(nodes.totalTokens))
+      .limit(limit);
+    return allNodes.map(n => ({
+      nodeId: n.id,
+      nodeName: n.displayName || n.name,
+      totalTokens: n.totalTokens,
+      pixelsPlaced: n.pixelsPlaced,
+    }));
+  }
+
+  async getMessageCount(): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)::int` }).from(messages);
+    return result.count;
   }
 }
 

@@ -1,6 +1,7 @@
 import * as cimc from "./cimc";
 import { storage } from "./storage";
 import { logger } from "./logger";
+import { runDailyReport } from "./analytics";
 
 type BroadcastFn = (msg: string) => void;
 type SendToNodeFn = (nodeId: number, msg: string) => boolean;
@@ -209,6 +210,31 @@ async function runSpiritsAgent(config: OrchestratorConfig) {
   }
 }
 
+function scheduleDailyReport() {
+  const now = new Date();
+  const nextMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+  const msUntilMidnight = nextMidnight.getTime() - now.getTime();
+
+  console.log(`[analytics] Daily report scheduled in ${Math.round(msUntilMidnight / 60000)} minutes (next UTC midnight)`);
+
+  setTimeout(async () => {
+    try {
+      const result = await runDailyReport();
+      console.log(`[analytics] Daily report done — emailSent=${result.emailSent}, computeSeconds=${result.report.computeSecondsDelta}`);
+    } catch (err) {
+      logger.error("analytics", "Daily report run failed", err);
+    }
+    setInterval(async () => {
+      try {
+        const result = await runDailyReport();
+        console.log(`[analytics] Daily report done — emailSent=${result.emailSent}, computeSeconds=${result.report.computeSecondsDelta}`);
+      } catch (err) {
+        logger.error("analytics", "Daily report run failed", err);
+      }
+    }, 24 * 60 * 60 * 1000);
+  }, msUntilMidnight);
+}
+
 export function startOrchestrator(config: OrchestratorConfig) {
   console.log("[orchestrator] Agent orchestrator starting...");
 
@@ -224,7 +250,9 @@ export function startOrchestrator(config: OrchestratorConfig) {
   setTimeout(() => runPixelAgent(config), 10_000);
   setTimeout(() => runSpiritsAgent(config), 5_000);
 
-  console.log("[orchestrator] Timers set — chat 90s, convo 45s, bridge 120s, pixels 45s, spirits 60s");
+  scheduleDailyReport();
+
+  console.log("[orchestrator] Timers set — chat 90s, convo 45s, bridge 120s, pixels 45s, spirits 60s, daily-report at midnight UTC");
 
   return () => {
     clearInterval(chatTimer);
