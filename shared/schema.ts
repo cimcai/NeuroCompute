@@ -107,6 +107,7 @@ export const dailySnapshots = pgTable("daily_snapshots", {
   totalPixelsPlaced: integer("total_pixels_placed").default(0).notNull(),
   activeNodes: integer("active_nodes").default(0).notNull(),
   messageCount: integer("message_count").default(0).notNull(),
+  nodeTokensSnapshot: text("node_tokens_snapshot"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

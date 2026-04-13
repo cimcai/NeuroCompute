@@ -750,7 +750,10 @@ export async function registerRoutes(
     try {
       const adminSecret = process.env.ADMIN_SECRET;
       const provided = req.query.secret as string | undefined;
-      if (adminSecret && provided !== adminSecret) {
+      if (!adminSecret) {
+        return res.status(401).json({ message: "Admin endpoint disabled — set ADMIN_SECRET env var to enable" });
+      }
+      if (provided !== adminSecret) {
         return res.status(401).json({ message: "Unauthorized — invalid or missing secret" });
       }
       const preview = req.query.preview === "true";

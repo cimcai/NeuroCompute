@@ -1,9 +1,18 @@
 import { storage } from "./storage";
 import { logger } from "./logger";
 
+export interface ContributorPeriod {
+  nodeId: number;
+  nodeName: string;
+  periodTokens: number;
+  totalTokens: number;
+  pixelsPlaced: number;
+}
+
 export interface ReportData {
   periodLabel: string;
   snapshotDate: string;
+  frequency: string;
   totalNodes: number;
   totalTokens: number;
   totalPixelsPlaced: number;
@@ -15,13 +24,23 @@ export interface ReportData {
   tokenDelta: number;
   pixelDelta: number;
   computeSecondsDelta: number;
-  topContributors: { nodeId: number; nodeName: string; totalTokens: number; pixelsPlaced: number }[];
+  topContributors: ContributorPeriod[];
+}
+
+export function getReportFrequency(): "daily" | "weekly" {
+  const freq = (process.env.REPORT_FREQUENCY || "daily").toLowerCase();
+  return freq === "weekly" ? "weekly" : "daily";
+}
+
+export function getIntervalMs(): number {
+  return getReportFrequency() === "weekly"
+    ? 7 * 24 * 60 * 60 * 1000
+    : 24 * 60 * 60 * 1000;
 }
 
 export async function buildReport(): Promise<ReportData> {
-  const [allNodes, topContributors, messageCount, prevSnapshot] = await Promise.all([
+  const [allNodes, messageCount, prevSnapshot] = await Promise.all([
     storage.getNodes(),
-    storage.getTopContributors(5),
     storage.getMessageCount(),
     storage.getLatestSnapshot(),
   ]);
@@ -29,21 +48,40 @@ export async function buildReport(): Promise<ReportData> {
   const totalTokens = allNodes.reduce((sum, n) => sum + n.totalTokens, 0);
   const totalPixelsPlaced = allNodes.reduce((sum, n) => sum + n.pixelsPlaced, 0);
   const totalNodes = allNodes.length;
-  const activeNodes = allNodes.filter(n => {
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    return n.lastSeen.getTime() > cutoff;
-  }).length;
+
+  const cutoff24h = Date.now() - 24 * 60 * 60 * 1000;
+  const activeNodes = allNodes.filter(n => n.lastSeen.getTime() > cutoff24h).length;
 
   const prevTotalTokens = prevSnapshot?.totalTokens ?? 0;
   const prevTotalPixels = prevSnapshot?.totalPixelsPlaced ?? 0;
 
   const tokenDelta = Math.max(0, totalTokens - prevTotalTokens);
   const pixelDelta = Math.max(0, totalPixelsPlaced - prevTotalPixels);
-  const computeSeconds = parseFloat((tokenDelta * 0.1).toFixed(1));
   const computeSecondsDelta = parseFloat((tokenDelta * 0.1).toFixed(1));
+  const computeSeconds = parseFloat((totalTokens * 0.1).toFixed(1));
+
+  let prevNodeTokens: Record<number, number> = {};
+  if (prevSnapshot?.nodeTokensSnapshot) {
+    try {
+      prevNodeTokens = JSON.parse(prevSnapshot.nodeTokensSnapshot);
+    } catch {}
+  }
+
+  const contributors: ContributorPeriod[] = allNodes
+    .map(n => ({
+      nodeId: n.id,
+      nodeName: n.displayName || n.name,
+      periodTokens: Math.max(0, n.totalTokens - (prevNodeTokens[n.id] ?? 0)),
+      totalTokens: n.totalTokens,
+      pixelsPlaced: n.pixelsPlaced,
+    }))
+    .filter(c => c.totalTokens > 0)
+    .sort((a, b) => b.periodTokens - a.periodTokens)
+    .slice(0, 5);
 
   const now = new Date();
   const snapshotDate = now.toISOString().split("T")[0];
+  const frequency = getReportFrequency();
   const periodLabel = prevSnapshot
     ? `${prevSnapshot.snapshotDate} → ${snapshotDate}`
     : `Inception → ${snapshotDate}`;
@@ -51,6 +89,7 @@ export async function buildReport(): Promise<ReportData> {
   return {
     periodLabel,
     snapshotDate,
+    frequency,
     totalNodes,
     totalTokens,
     totalPixelsPlaced,
@@ -62,11 +101,17 @@ export async function buildReport(): Promise<ReportData> {
     tokenDelta,
     pixelDelta,
     computeSecondsDelta,
-    topContributors,
+    topContributors: contributors,
   };
 }
 
 export async function takeSnapshot(report: ReportData): Promise<void> {
+  const allNodes = await storage.getNodes();
+  const nodeTokensSnapshot: Record<number, number> = {};
+  for (const n of allNodes) {
+    nodeTokensSnapshot[n.id] = n.totalTokens;
+  }
+
   await storage.createSnapshot({
     snapshotDate: report.snapshotDate,
     totalNodes: report.totalNodes,
@@ -74,15 +119,16 @@ export async function takeSnapshot(report: ReportData): Promise<void> {
     totalPixelsPlaced: report.totalPixelsPlaced,
     activeNodes: report.activeNodes,
     messageCount: report.messageCount,
+    nodeTokensSnapshot: JSON.stringify(nodeTokensSnapshot),
   });
-  logger.info("analytics", `Snapshot taken for ${report.snapshotDate}`);
+  logger.info("analytics", `Snapshot taken for ${report.snapshotDate} (${report.frequency})`);
 }
 
 export function renderEmailHtml(report: ReportData): string {
   const fmt = (n: number) => n.toLocaleString("en-US");
   const fmtSec = (s: number) => {
-    if (s < 60) return `${s}s`;
-    if (s < 3600) return `${Math.floor(s / 60)}m ${(s % 60).toFixed(0)}s`;
+    if (s < 60) return `${s.toFixed(1)}s`;
+    if (s < 3600) return `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
     return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
   };
 
@@ -97,7 +143,7 @@ export function renderEmailHtml(report: ReportData): string {
       <tr>
         <td style="padding:6px 10px;color:#c4a882;font-family:monospace">${i + 1}</td>
         <td style="padding:6px 10px;color:#e8d5b0">${c.nodeName}</td>
-        <td style="padding:6px 10px;color:#7aadad;text-align:right;font-family:monospace">${fmt(c.totalTokens)}</td>
+        <td style="padding:6px 10px;color:#7aadad;text-align:right;font-family:monospace">+${fmt(c.periodTokens)}</td>
         <td style="padding:6px 10px;color:#a98ec4;text-align:right;font-family:monospace">${fmt(c.pixelsPlaced)}</td>
       </tr>`
     )
@@ -118,7 +164,7 @@ export function renderEmailHtml(report: ReportData): string {
         <!-- Header -->
         <tr><td style="background:#0d1a2a;padding:24px 32px;border-bottom:1px solid #1a2a3a;">
           <div style="font-size:11px;letter-spacing:3px;color:#7aadad;text-transform:uppercase;margin-bottom:6px">NEUROCOMPUTE NETWORK</div>
-          <div style="font-size:22px;font-weight:bold;color:#e8d5b0">Network Activity Report</div>
+          <div style="font-size:22px;font-weight:bold;color:#e8d5b0">${report.frequency === "weekly" ? "Weekly" : "Daily"} Network Report</div>
           <div style="font-size:12px;color:#8090a0;margin-top:4px;font-family:monospace">${report.periodLabel}</div>
         </td></tr>
 
@@ -131,7 +177,7 @@ export function renderEmailHtml(report: ReportData): string {
                   <div style="font-size:11px;letter-spacing:2px;color:#7aadad;text-transform:uppercase;margin-bottom:8px">Compute Time</div>
                   <div style="font-size:28px;font-weight:bold;color:#7aadad;font-family:monospace">${fmtSec(report.computeSecondsDelta)}</div>
                   <div style="font-size:11px;color:#8090a0;margin-top:4px">this period</div>
-                  <div style="font-size:11px;color:#8090a0;margin-top:2px;font-family:monospace">Total: ${fmtSec(report.totalTokens * 0.1)}</div>
+                  <div style="font-size:11px;color:#8090a0;margin-top:2px;font-family:monospace">Total: ${fmtSec(report.computeSeconds)}</div>
                 </div>
               </td>
               <td width="33%" style="padding-right:8px;">
@@ -179,18 +225,18 @@ export function renderEmailHtml(report: ReportData): string {
           </div>
         </td></tr>
 
-        <!-- Top contributors -->
+        <!-- Top contributors this period -->
         <tr><td style="padding:0 32px 24px;">
           <div style="background:#111120;border:1px solid #1a1a2a;border-radius:6px;padding:16px;">
-            <div style="font-size:11px;letter-spacing:2px;color:#c4a882;text-transform:uppercase;margin-bottom:12px">Top 5 Contributors (All Time)</div>
+            <div style="font-size:11px;letter-spacing:2px;color:#c4a882;text-transform:uppercase;margin-bottom:12px">Top 5 Contributors — This Period</div>
             <table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;border-collapse:collapse;">
               <tr style="border-bottom:1px solid #1a1a2a;">
                 <th style="padding:6px 10px;text-align:left;color:#8090a0;font-weight:normal;font-size:11px">#</th>
                 <th style="padding:6px 10px;text-align:left;color:#8090a0;font-weight:normal;font-size:11px">Node</th>
-                <th style="padding:6px 10px;text-align:right;color:#8090a0;font-weight:normal;font-size:11px">Tokens</th>
+                <th style="padding:6px 10px;text-align:right;color:#8090a0;font-weight:normal;font-size:11px">Period Tokens</th>
                 <th style="padding:6px 10px;text-align:right;color:#8090a0;font-weight:normal;font-size:11px">Pixels</th>
               </tr>
-              ${topRows || '<tr><td colspan="4" style="padding:12px 10px;color:#8090a0;text-align:center">No contributors yet</td></tr>'}
+              ${topRows || '<tr><td colspan="4" style="padding:12px 10px;color:#8090a0;text-align:center">No contributions this period</td></tr>'}
             </table>
           </div>
         </td></tr>
@@ -212,13 +258,18 @@ export async function sendReportEmail(report: ReportData): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY;
   const toEmail = process.env.REPORT_EMAIL;
 
-  if (!apiKey || !toEmail) {
-    logger.warn("analytics", `Email skipped — missing ${!apiKey ? "RESEND_API_KEY" : "REPORT_EMAIL"} env var`);
+  if (!apiKey) {
+    logger.warn("analytics", "Email skipped — RESEND_API_KEY is not set");
+    return false;
+  }
+  if (!toEmail) {
+    logger.warn("analytics", "Email skipped — REPORT_EMAIL is not set");
     return false;
   }
 
   const html = renderEmailHtml(report);
-  const subject = `NeuroCompute Report — ${report.snapshotDate} | ${report.activeNodes} nodes active`;
+  const label = report.frequency === "weekly" ? "Weekly" : "Daily";
+  const subject = `${label} NeuroCompute Report — ${report.snapshotDate} | ${report.activeNodes} nodes active`;
 
   try {
     const resp = await fetch("https://api.resend.com/emails", {

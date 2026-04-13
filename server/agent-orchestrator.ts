@@ -1,7 +1,7 @@
 import * as cimc from "./cimc";
 import { storage } from "./storage";
 import { logger } from "./logger";
-import { runDailyReport } from "./analytics";
+import { runDailyReport, getIntervalMs, getReportFrequency } from "./analytics";
 
 type BroadcastFn = (msg: string) => void;
 type SendToNodeFn = (nodeId: number, msg: string) => boolean;
@@ -211,28 +211,28 @@ async function runSpiritsAgent(config: OrchestratorConfig) {
 }
 
 function scheduleDailyReport() {
+  const frequency = getReportFrequency();
+  const intervalMs = getIntervalMs();
+
   const now = new Date();
   const nextMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
-  const msUntilMidnight = nextMidnight.getTime() - now.getTime();
+  const msUntilFirst = nextMidnight.getTime() - now.getTime();
 
-  console.log(`[analytics] Daily report scheduled in ${Math.round(msUntilMidnight / 60000)} minutes (next UTC midnight)`);
+  console.log(`[analytics] ${frequency} report scheduled in ${Math.round(msUntilFirst / 60000)} minutes (next UTC midnight), then every ${frequency === "weekly" ? "7 days" : "24h"}`);
 
-  setTimeout(async () => {
+  const runReport = async () => {
     try {
       const result = await runDailyReport();
-      console.log(`[analytics] Daily report done — emailSent=${result.emailSent}, computeSeconds=${result.report.computeSecondsDelta}`);
+      console.log(`[analytics] ${frequency} report done — emailSent=${result.emailSent}, computeSecondsDelta=${result.report.computeSecondsDelta}`);
     } catch (err) {
-      logger.error("analytics", "Daily report run failed", err);
+      logger.error("analytics", `${frequency} report run failed`, err);
     }
-    setInterval(async () => {
-      try {
-        const result = await runDailyReport();
-        console.log(`[analytics] Daily report done — emailSent=${result.emailSent}, computeSeconds=${result.report.computeSecondsDelta}`);
-      } catch (err) {
-        logger.error("analytics", "Daily report run failed", err);
-      }
-    }, 24 * 60 * 60 * 1000);
-  }, msUntilMidnight);
+  };
+
+  setTimeout(() => {
+    runReport();
+    setInterval(runReport, intervalMs);
+  }, msUntilFirst);
 }
 
 export function startOrchestrator(config: OrchestratorConfig) {
