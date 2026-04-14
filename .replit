@@ -43,3 +43,4 @@ waitForPort = 5000
 
 [userenv.shared]
 REPORT_EMAIL = "joel@cimc.ai"
+ADMIN_SECRET = "EIAC0-HELLONAVI"
