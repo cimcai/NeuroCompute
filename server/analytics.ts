@@ -354,7 +354,9 @@ export interface AnalyticsData {
     totalTokens: number;
     totalPixelsPlaced: number;
     totalSubPixels: number;
-    messageCount: number;
+    chatMessages: number;
+    journalEntries: number;
+    totalActivity: number;
     computeSeconds: number;
     pixelCreditsInCirculation: number;
   };
@@ -370,9 +372,10 @@ export interface AnalyticsData {
 }
 
 export async function buildAnalyticsData(trendDays = 14): Promise<AnalyticsData> {
-  const [allNodes, messageCount, subPixelCount, snapshots] = await Promise.all([
+  const [allNodes, chatMessages, journalEntryCount, subPixelCount, snapshots] = await Promise.all([
     storage.getNodes(),
     storage.getMessageCount(),
+    storage.getJournalEntryCount(),
     storage.getSubPixelCount(),
     storage.getSnapshots(trendDays),
   ]);
@@ -443,7 +446,9 @@ export async function buildAnalyticsData(trendDays = 14): Promise<AnalyticsData>
       totalTokens,
       totalPixelsPlaced,
       totalSubPixels: subPixelCount,
-      messageCount,
+      chatMessages,
+      journalEntries: journalEntryCount,
+      totalActivity: chatMessages + journalEntryCount,
       computeSeconds,
       pixelCreditsInCirculation,
     },
@@ -573,7 +578,7 @@ export function renderAnalyticsEmailHtml(data: AnalyticsData): string {
 
         <tr><td style="background:#0a0a10;padding:14px 32px;border-top:1px solid #1a1a2a;text-align:center;">
           <div style="font-size:11px;color:#4a4a5a;font-family:monospace">NeuroCompute — Decentralized AI Compute Network</div>
-          <div style="font-size:10px;color:#3a3a4a;font-family:monospace;margin-top:3px">Messages: ${fmt(data.live.messageCount)} · Credits in circulation: ${fmt(data.live.pixelCreditsInCirculation)} · New nodes this period: ${data.period.newContributors}</div>
+          <div style="font-size:10px;color:#3a3a4a;font-family:monospace;margin-top:3px">Chat: ${fmt(data.live.chatMessages)} · Journal: ${fmt(data.live.journalEntries)} · Credits: ${fmt(data.live.pixelCreditsInCirculation)} · New nodes: ${data.period.newContributors}</div>
         </td></tr>
 
       </table>

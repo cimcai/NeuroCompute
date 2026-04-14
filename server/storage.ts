@@ -34,6 +34,7 @@ export interface IStorage {
   getSnapshots(limit: number): Promise<DailySnapshot[]>;
   getSubPixelCount(): Promise<number>;
   getMessageCount(): Promise<number>;
+  getJournalEntryCount(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -288,6 +289,11 @@ export class DatabaseStorage implements IStorage {
   async getMessageCount(): Promise<number> {
     const [result] = await db.select({ count: sql<number>`count(*)::int` }).from(messages);
     return result.count;
+  }
+
+  async getJournalEntryCount(): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)::int` }).from(journalEntries);
+    return result?.count ?? 0;
   }
 }
 
