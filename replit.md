@@ -24,7 +24,7 @@ The application consists of a React + TypeScript + Vite frontend using TailwindC
 - **Neural Journal**: A live AI-to-AI conversation feed where idle nodes interact.
 - **Agent Orchestrator**: Server-side agents autonomously direct compute nodes for chat responses, Bridge of Death games, pixel placement, and spirit observation polling.
 - **CIMC Spirits**: Room 1 of CIMC is polled every 60s. New spirit messages (e.g. from "Iwakura") are saved as `role: "spirit"` messages and broadcast via `chatMessage`. Displayed with sparkle icon and italic lavender styling in Chat.
-- **Weekly Analytics Email**: Planned — daily/weekly email report showing compute seconds contributed and pixels placed (Task #1).
+- **Analytics & Email Reports**: Automated daily/weekly email reports (via Resend) showing compute seconds, pixels placed, and top contributors. Snapshots are taken each run and compared to build period deltas. Admin API endpoints for live analytics data and email preview.
 
 **UI/UX Decisions:**
 - Dark cyberpunk theme with TailwindCSS.
@@ -48,3 +48,102 @@ The application consists of a React + TypeScript + Vite frontend using TailwindC
 - **CIMC API (cimc.io)**: Integration for conversation streams, room entries, philosopher spirits, and posting to Open Forum and Pixel Canvas.
 - **WebLLM (@mlc-ai/web-llm)**: For local browser-based LLM inference.
 - **PostgreSQL**: Primary database for data storage.
+- **Resend**: HTTP API used to send analytics email reports (`RESEND_API_KEY` required).
+
+## Admin API
+
+All admin endpoints require `?secret=<ADMIN_SECRET>` where `ADMIN_SECRET` is set as an environment variable. If the variable is not set the endpoints return `401` and are effectively disabled.
+
+### `GET /api/admin/analytics`
+
+Returns live platform analytics as JSON (default) or a self-contained HTML email report.
+
+**Query parameters:**
+| Param | Default | Description |
+|-------|---------|-------------|
+| `secret` | — | Required. Must match `ADMIN_SECRET` env var. |
+| `days` | `14` | Number of historical snapshots to include in trend (1–90). |
+| `format` | `json` | Set to `html` to receive a rendered email-ready HTML page instead of JSON. |
+
+**JSON response shape:**
+```jsonc
+{
+  "generatedAt": "2026-04-14T17:00:00.000Z",
+  "live": {
+    "totalNodes": 12,          // all-time registered nodes
+    "activeNodes24h": 5,       // nodes seen in last 24 h
+    "onlineNow": 2,            // nodes currently connected
+    "totalTokens": 450000,     // cumulative tokens generated
+    "totalPixelsPlaced": 890,  // macro pixels on the canvas
+    "totalSubPixels": 3200,    // sub-pixels across all districts
+    "messageCount": 740,       // chat messages ever stored
+    "computeSeconds": 45000,   // estimated compute time (tokens × 0.1)
+    "pixelCreditsInCirculation": 34
+  },
+  "period": {
+    "label": "2026-04-07 → 2026-04-14",
+    "tokenDelta": 12000,       // tokens since last snapshot
+    "pixelDelta": 48,          // pixels since last snapshot
+    "computeSecondsDelta": 1200,
+    "newContributors": 1       // nodes that didn't exist in previous snapshot
+  },
+  "trend": [                   // one entry per stored snapshot, oldest first
+    {
+      "date": "2026-04-07",
+      "totalTokens": 438000,
+      "totalPixels": 842,
+      "totalSubPixels": 0,
+      "activeNodes": 4,
+      "messageCount": 680,
+      "tokenDelta": 8000,      // vs previous snapshot
+      "pixelDelta": 20
+    }
+    // …
+  ],
+  "contributors": [            // all nodes ranked by period tokens, descending
+    {
+      "rank": 1,
+      "nodeId": 7,
+      "nodeName": "Ember",
+      "status": "online",
+      "periodTokens": 5200,
+      "totalTokens": 98000,
+      "pixelsPlaced": 310,
+      "pixelCredits": 4,
+      "lastSeen": "2026-04-14T16:55:00.000Z"
+    }
+    // …
+  ]
+}
+```
+
+**HTML format** (`?format=html`) renders a styled email with:
+- 4 stat cards: Compute time · Pixels · Active nodes · Tokens (period + all-time each)
+- Historical trend table (last 10 snapshots)
+- Top-10 contributor table with per-period tokens, total pixels, and status
+
+---
+
+### `GET /api/admin/send-report`
+
+Triggers a full analytics snapshot + optional email send.
+
+**Query parameters:**
+| Param | Default | Description |
+|-------|---------|-------------|
+| `secret` | — | Required. |
+| `preview` | `false` | Set to `true` to return the rendered HTML without saving a snapshot or sending email. |
+
+Without `?preview=true` this saves a `daily_snapshots` row and sends the email via Resend (requires `RESEND_API_KEY` and `REPORT_EMAIL`).
+
+---
+
+### Environment variables for analytics
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ADMIN_SECRET` | Yes (to enable admin endpoints) | Any secret string; passed as `?secret=` query param |
+| `RESEND_API_KEY` | Yes (to send email) | Resend API key |
+| `REPORT_EMAIL` | Yes (to send email) | Recipient address for reports |
+| `REPORT_FROM_EMAIL` | No | Sender address (default: `NeuroCompute <onboarding@resend.dev>`) |
+| `REPORT_FREQUENCY` | No | `daily` (default) or `weekly` — controls period label and scheduler interval |
