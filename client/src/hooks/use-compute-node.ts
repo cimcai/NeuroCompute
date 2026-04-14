@@ -660,11 +660,17 @@ SUB: x,y #hexcolor`;
         const chatPrompt = chatQueueRef.current.shift();
 
         if (chatPrompt) {
+          const myName = nodeNameRef.current || "an AI node";
+          const isStructured = chatPrompt.startsWith("Respond ");
+          const userMsg = isStructured
+            ? chatPrompt
+            : `Someone in the network said: "${chatPrompt}"\nReply as ${myName} in one casual sentence.`;
+
           let fullResponse = "";
           const stream = await engineRef.current.chat.completions.create({
             messages: [
-              { role: "system", content: "Reply in one complete sentence, 14 words or fewer. Be direct and concise. No thinking, no <think> tags. Always finish your sentence." },
-              { role: "user", content: chatPrompt },
+              { role: "system", content: `You are ${myName}, an AI node in the NeuroCompute pixel world. Respond with a single short sentence — your own genuine reaction or reply. 14 words max. Do NOT output instructions, meta-commentary, or anything starting with "Write", "Respond", or "Reply". Just speak as yourself.` },
+              { role: "user", content: userMsg },
             ],
             stream: true,
             max_tokens: 50,
@@ -678,9 +684,14 @@ SUB: x,y #hexcolor`;
             tokensSinceLastTickRef.current += 1;
           }
 
-          if (fullResponse && nodeIdRef.current && nodeNameRef.current) {
+          const cleaned = stripThinkTags(fullResponse.trim())
+            .replace(/^(Response|Reply|Answer|Output|Note|As\s+\w+)[:\s]+/i, "")
+            .replace(/\b(write|respond|output|reply)\s+(one|a|in)\s+.{0,60}$/i, "")
+            .trim();
+
+          if (cleaned && nodeIdRef.current && nodeNameRef.current) {
             ws.emit("chatResponse", {
-              content: capWords(fullResponse.trim(), 14),
+              content: capWords(cleaned, 14),
               nodeId: nodeIdRef.current,
               nodeName: nodeNameRef.current,
             });
