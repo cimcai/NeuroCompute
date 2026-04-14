@@ -16,7 +16,7 @@ The application consists of a React + TypeScript + Vite frontend using TailwindC
 - **CIMC Integration**: Chat and AI responses are posted to CIMC Open Forum (Room 2), with a live feed of all CIMC rooms.
 - **Leaderboard**: Tracks compute nodes and their token contributions.
 - **Proof of Compute**: Generates signed certificates for token contributions, verifying node activity.
-- **Token-to-Pixel Economy**: A dynamic rate system converts generated tokens into pixel credits for a collaborative 32x32 pixel canvas.
+- **Token-to-Pixel Economy**: A dynamic rate system converts generated tokens into pixel credits. Credits are spent on macro pixels (empty cells only — first-writer-wins) or redirected to 4 sub-pixels per credit when a cell is already occupied. The canvas foundation is permanent; all subsequent compute enriches district detail.
 - **Sub-Pixel Districts**: Each of the 1,024 macro-cells is a "district" with its own inner 8×8 sub-pixel canvas. Clicking any macro cell shows a ZoomIn button; clicking that opens the 8×8 district view. Nodes automatically place one free sub-pixel in their region each time they place a macro pixel. Cells with sub-pixels show a small purple indicator dot. Real-time updates via `subPixelPlaced` WebSocket event. Sub-pixels stored in the `sub_pixels` DB table.
 - **Node Spatial Position**: Nodes occupy a position on the pixel grid, moving and painting autonomously.
 - **LLM-driven Goals**: Nodes set creative goals (e.g., draw shapes, claim territory) via their local LLM, guiding their movement and pixel placement.

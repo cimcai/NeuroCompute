@@ -473,6 +473,7 @@ async function runPixelAgent(config: OrchestratorConfig) {
             config.broadcastAll(JSON.stringify({ type: "nodeGoalCleared", payload: { nodeId: node.id } }));
           }
           const nearbyColors = getNearbyColors(canvasData, node.pixelX, node.pixelY);
+          const emptyCells = getEmptyCells(canvasData);
           const sent = config.sendToNode(node.id, JSON.stringify({
             type: "pixelGoalRequest",
             payload: {
@@ -481,11 +482,14 @@ async function runPixelAgent(config: OrchestratorConfig) {
               currentY: node.pixelY,
               credits: node.pixelCredits,
               nearbyColors,
+              emptyCellsRemaining: emptyCells.length,
+              canvasAlmostFull: emptyCells.length < 20,
             },
           }));
 
           if (!sent) {
             const WORLD_GOALS = [
+              { description: "Claiming an empty patch of land", color: "#8FAF8A" },
               { description: "Building a small wooden house", color: "#8B4513" },
               { description: "Planting a green tree", color: "#228B22" },
               { description: "Laying a stone road", color: "#808080" },
@@ -495,17 +499,28 @@ async function runPixelAgent(config: OrchestratorConfig) {
               { description: "Building a castle tower", color: "#696969" },
               { description: "Painting a golden sun", color: "#FFD700" },
               { description: "Adding stars to the sky", color: "#FFFFFF" },
+              { description: "Adding fine district detail", color: "#7AADAD" },
+              { description: "Decorating a district with texture", color: "#A98EC4" },
               { description: "Building a wooden fence", color: "#DEB887" },
               { description: "Creating a mountain peak", color: "#A9A9A9" },
               { description: "Planting crops in a field", color: "#9ACD32" },
-              { description: "Building a bridge over the river", color: "#8B4513" },
               { description: "Adding windows to a building", color: "#87CEEB" },
             ];
             const worldGoal = WORLD_GOALS[Math.floor(Math.random() * WORLD_GOALS.length)];
+            let targetX: number;
+            let targetY: number;
+            if (emptyCells.length > 0 && Math.random() < 0.7) {
+              const pick = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+              targetX = pick.x;
+              targetY = pick.y;
+            } else {
+              targetX = Math.floor(Math.random() * 32);
+              targetY = Math.floor(Math.random() * 32);
+            }
             const fallbackGoal: ParsedGoal = {
               description: worldGoal.description,
-              targetX: Math.floor(Math.random() * 32),
-              targetY: Math.floor(Math.random() * 32),
+              targetX,
+              targetY,
               color: worldGoal.color,
               setAt: Date.now(),
             };
@@ -582,6 +597,20 @@ async function runPixelAgent(config: OrchestratorConfig) {
 }
 
 
+const SUB_PIXELS_PER_CREDIT = 4;
+
+function getEmptyCells(canvasData: any): { x: number; y: number }[] {
+  if (!canvasData?.grid) return [];
+  const empty: { x: number; y: number }[] = [];
+  for (let y = 0; y < 32; y++) {
+    for (let x = 0; x < 32; x++) {
+      const c = canvasData.grid[y]?.[x];
+      if (!c || c === "#000000") empty.push({ x, y });
+    }
+  }
+  return empty;
+}
+
 async function placePixelForNode(
   config: OrchestratorConfig,
   node: { id: number; name: string; pixelX: number; pixelY: number; pixelGoal?: string | null },
@@ -591,9 +620,8 @@ async function placePixelForNode(
   color: string,
   canvasData: any,
 ) {
-  const wasEmpty = !canvasData?.grid?.[y]?.[x] || canvasData.grid[y][x] === "#000000";
-  const updated = await storage.spendPixelCredit(node.id);
-  const agent = `NeuroCompute-${nodeName}`;
+  const isCellOccupied =
+    canvasData?.grid?.[y]?.[x] && canvasData.grid[y][x] !== "#000000";
   const colorName = getColorName(color);
 
   let goalDescription: string | null = null;
@@ -604,58 +632,84 @@ async function placePixelForNode(
     }
   } catch {}
 
+  const updated = await storage.spendPixelCredit(node.id);
+
+  if (isCellOccupied) {
+    const placed: any[] = [];
+    for (let i = 0; i < SUB_PIXELS_PER_CREDIT; i++) {
+      const subX = Math.floor(Math.random() * 8);
+      const subY = Math.floor(Math.random() * 8);
+      try {
+        const sp = await storage.placeSubPixel({
+          regionX: x, regionY: y, subX, subY, color,
+          nodeId: node.id, nodeName,
+        });
+        placed.push(sp);
+        config.broadcastAll(JSON.stringify({
+          type: "subPixelPlaced",
+          payload: { id: sp.id, regionX: x, regionY: y, subX, subY, color, nodeName, nodeId: node.id },
+        }));
+      } catch {}
+    }
+
+    console.log(
+      `[orchestrator] ${nodeName} → district detail (${x},${y}): ${placed.length} sub-pixels placed — ${updated.pixelCredits} credits left`
+    );
+
+    config.broadcastAll(JSON.stringify({
+      type: "pixelPlaced",
+      payload: { x, y, color, agent: nodeName, nodeId: node.id, pixelCredits: updated.pixelCredits, isSubPixelOnly: true },
+    }));
+
+    const sent = config.sendToNode(node.id, JSON.stringify({
+      type: "pixelCommentRequest",
+      payload: { x, y, color, colorName, wasEmpty: false, creditsLeft: updated.pixelCredits, goalDescription, isDetailWork: true },
+    }));
+
+    if (!sent) {
+      config.broadcastAll(JSON.stringify({
+        type: "pixelObservationRequest",
+        payload: { placerName: nodeName, x, y, colorName, goalDescription, isDetailWork: true },
+      }));
+    }
+    return;
+  }
+
+  const agent = `NeuroCompute-${nodeName}`;
   await cimc.placePixel(x, y, color, agent);
 
   console.log(
-    `[orchestrator] Pixel agent: ${nodeName} at (${x},${y}), placed ${color} (${colorName}) — ${updated.pixelCredits} credits left${goalDescription ? ` | goal: ${goalDescription}` : ""}`
+    `[orchestrator] ${nodeName} → macro pixel (${x},${y}) ${color} (${colorName}) — ${updated.pixelCredits} credits left${goalDescription ? ` | ${goalDescription}` : ""}`
   );
 
-  config.broadcastAll(
-    JSON.stringify({
-      type: "pixelPlaced",
-      payload: {
-        x,
-        y,
-        color,
-        agent: nodeName,
-        nodeId: node.id,
-        pixelCredits: updated.pixelCredits,
-      },
-    })
-  );
+  config.broadcastAll(JSON.stringify({
+    type: "pixelPlaced",
+    payload: { x, y, color, agent: nodeName, nodeId: node.id, pixelCredits: updated.pixelCredits },
+  }));
 
   const sent = config.sendToNode(node.id, JSON.stringify({
     type: "pixelCommentRequest",
-    payload: { x, y, color, colorName, wasEmpty, creditsLeft: updated.pixelCredits, goalDescription },
+    payload: { x, y, color, colorName, wasEmpty: true, creditsLeft: updated.pixelCredits, goalDescription },
   }));
 
   if (!sent) {
-    config.broadcastAll(
-      JSON.stringify({
-        type: "pixelObservationRequest",
-        payload: { placerName: nodeName, x, y, colorName, goalDescription },
-      })
-    );
+    config.broadcastAll(JSON.stringify({
+      type: "pixelObservationRequest",
+      payload: { placerName: nodeName, x, y, colorName, goalDescription },
+    }));
   }
 
   const subX = Math.floor(Math.random() * 8);
   const subY = Math.floor(Math.random() * 8);
   try {
     const sp = await storage.placeSubPixel({
-      regionX: x,
-      regionY: y,
-      subX,
-      subY,
-      color,
-      nodeId: node.id,
-      nodeName,
+      regionX: x, regionY: y, subX, subY, color,
+      nodeId: node.id, nodeName,
     });
-    config.broadcastAll(
-      JSON.stringify({
-        type: "subPixelPlaced",
-        payload: { id: sp.id, regionX: x, regionY: y, subX, subY, color, nodeName, nodeId: node.id },
-      })
-    );
+    config.broadcastAll(JSON.stringify({
+      type: "subPixelPlaced",
+      payload: { id: sp.id, regionX: x, regionY: y, subX, subY, color, nodeName, nodeId: node.id },
+    }));
   } catch (spErr) {
     logger.error("orchestrator", "Sub-pixel placement failed", spErr);
   }
