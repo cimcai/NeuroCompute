@@ -8,7 +8,7 @@ import { z } from "zod";
 import * as cimc from "./cimc";
 import { startOrchestrator } from "./agent-orchestrator";
 import { logger } from "./logger";
-import { runDailyReport, buildReport, renderEmailHtml } from "./analytics";
+import { runDailyReport, buildReport, renderEmailHtml, buildAnalyticsData, renderAnalyticsEmailHtml } from "./analytics";
 
 let pixelHistoryCache: any[] = [];
 let pixelCacheTotal = 0;
@@ -780,6 +780,35 @@ export async function registerRoutes(
     } catch (err) {
       logger.error("api", "Admin send-report error", err);
       res.status(500).json({ message: "Failed to run report" });
+    }
+  });
+
+  app.get("/api/admin/analytics", async (req, res) => {
+    try {
+      const adminSecret = process.env.ADMIN_SECRET;
+      const provided = req.query.secret as string | undefined;
+      if (!adminSecret) {
+        return res.status(401).json({ message: "Admin endpoint disabled — set ADMIN_SECRET env var to enable" });
+      }
+      if (provided !== adminSecret) {
+        return res.status(401).json({ message: "Unauthorized — invalid or missing secret" });
+      }
+
+      const trendDays = Math.min(90, Math.max(1, parseInt((req.query.days as string) || "14") || 14));
+      const format = req.query.format as string | undefined;
+
+      const data = await buildAnalyticsData(trendDays);
+
+      if (format === "html") {
+        const html = renderAnalyticsEmailHtml(data);
+        res.setHeader("Content-Type", "text/html");
+        return res.send(html);
+      }
+
+      res.json(data);
+    } catch (err) {
+      logger.error("api", "Admin analytics error", err);
+      res.status(500).json({ message: "Failed to build analytics" });
     }
   });
 

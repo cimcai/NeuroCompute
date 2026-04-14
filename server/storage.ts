@@ -31,6 +31,8 @@ export interface IStorage {
   getRegionsWithSubPixels(): Promise<{ regionX: number; regionY: number; count: number }[]>;
   createSnapshot(snap: InsertDailySnapshot): Promise<DailySnapshot>;
   getLatestSnapshot(): Promise<DailySnapshot | undefined>;
+  getSnapshots(limit: number): Promise<DailySnapshot[]>;
+  getSubPixelCount(): Promise<number>;
   getMessageCount(): Promise<number>;
 }
 
@@ -271,6 +273,16 @@ export class DatabaseStorage implements IStorage {
   async getLatestSnapshot(): Promise<DailySnapshot | undefined> {
     const [snap] = await db.select().from(dailySnapshots).orderBy(desc(dailySnapshots.createdAt)).limit(1);
     return snap;
+  }
+
+  async getSnapshots(limit: number): Promise<DailySnapshot[]> {
+    const snaps = await db.select().from(dailySnapshots).orderBy(desc(dailySnapshots.createdAt)).limit(limit);
+    return snaps.reverse();
+  }
+
+  async getSubPixelCount(): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)::int` }).from(subPixels);
+    return result?.count ?? 0;
   }
 
   async getMessageCount(): Promise<number> {

@@ -1,5 +1,6 @@
 import { storage } from "./storage";
 import { logger } from "./logger";
+import type { DailySnapshot } from "@shared/schema";
 
 export interface ContributorPeriod {
   nodeId: number;
@@ -317,4 +318,266 @@ export async function runDailyReport(): Promise<{ success: boolean; emailSent: b
   await takeSnapshot(report);
   const emailSent = await sendReportEmail(report);
   return { success: true, emailSent, report };
+}
+
+// ─── Rich analytics API ───────────────────────────────────────────────────────
+
+export interface TrendPoint {
+  date: string;
+  totalTokens: number;
+  totalPixels: number;
+  totalSubPixels: number;
+  activeNodes: number;
+  messageCount: number;
+  tokenDelta: number;
+  pixelDelta: number;
+}
+
+export interface NodeStat {
+  rank: number;
+  nodeId: number;
+  nodeName: string;
+  status: string;
+  periodTokens: number;
+  totalTokens: number;
+  pixelsPlaced: number;
+  pixelCredits: number;
+  lastSeen: string;
+}
+
+export interface AnalyticsData {
+  generatedAt: string;
+  live: {
+    totalNodes: number;
+    activeNodes24h: number;
+    onlineNow: number;
+    totalTokens: number;
+    totalPixelsPlaced: number;
+    totalSubPixels: number;
+    messageCount: number;
+    computeSeconds: number;
+    pixelCreditsInCirculation: number;
+  };
+  period: {
+    label: string;
+    tokenDelta: number;
+    pixelDelta: number;
+    computeSecondsDelta: number;
+    newContributors: number;
+  };
+  trend: TrendPoint[];
+  contributors: NodeStat[];
+}
+
+export async function buildAnalyticsData(trendDays = 14): Promise<AnalyticsData> {
+  const [allNodes, messageCount, subPixelCount, snapshots] = await Promise.all([
+    storage.getNodes(),
+    storage.getMessageCount(),
+    storage.getSubPixelCount(),
+    storage.getSnapshots(trendDays),
+  ]);
+
+  const now = new Date();
+  const cutoff24h = Date.now() - 24 * 60 * 60 * 1000;
+
+  const totalTokens = allNodes.reduce((s, n) => s + n.totalTokens, 0);
+  const totalPixelsPlaced = allNodes.reduce((s, n) => s + n.pixelsPlaced, 0);
+  const pixelCreditsInCirculation = allNodes.reduce((s, n) => s + n.pixelCredits, 0);
+  const activeNodes24h = allNodes.filter(n => n.lastSeen.getTime() > cutoff24h).length;
+  const onlineNow = allNodes.filter(n => n.status === "online").length;
+  const computeSeconds = parseFloat((totalTokens * 0.1).toFixed(1));
+
+  const prevSnapshot = snapshots.length > 0 ? snapshots[snapshots.length - 1] : undefined;
+  const prevTotalTokens = prevSnapshot?.totalTokens ?? 0;
+  const prevTotalPixels = prevSnapshot?.totalPixelsPlaced ?? 0;
+  const tokenDelta = Math.max(0, totalTokens - prevTotalTokens);
+  const pixelDelta = Math.max(0, totalPixelsPlaced - prevTotalPixels);
+  const computeSecondsDelta = parseFloat((tokenDelta * 0.1).toFixed(1));
+
+  let prevNodeTokens: Record<number, number> = {};
+  if (prevSnapshot?.nodeTokensSnapshot) {
+    try { prevNodeTokens = JSON.parse(prevSnapshot.nodeTokensSnapshot); } catch {}
+  }
+  const prevNodeIds = new Set(Object.keys(prevNodeTokens).map(Number));
+  const newContributors = allNodes.filter(n => n.totalTokens > 0 && !prevNodeIds.has(n.id)).length;
+
+  const periodLabel = prevSnapshot
+    ? `${prevSnapshot.snapshotDate} → ${now.toISOString().split("T")[0]}`
+    : `Inception → ${now.toISOString().split("T")[0]}`;
+
+  const trend: TrendPoint[] = snapshots.map((snap, i) => {
+    const prev = i > 0 ? snapshots[i - 1] : undefined;
+    return {
+      date: snap.snapshotDate,
+      totalTokens: snap.totalTokens,
+      totalPixels: snap.totalPixelsPlaced,
+      totalSubPixels: 0,
+      activeNodes: snap.activeNodes,
+      messageCount: snap.messageCount,
+      tokenDelta: prev ? Math.max(0, snap.totalTokens - prev.totalTokens) : 0,
+      pixelDelta: prev ? Math.max(0, snap.totalPixelsPlaced - prev.totalPixelsPlaced) : 0,
+    };
+  });
+
+  const contributors: NodeStat[] = allNodes
+    .map((n, _, arr) => ({
+      rank: 0,
+      nodeId: n.id,
+      nodeName: n.displayName || n.name,
+      status: n.status,
+      periodTokens: Math.max(0, n.totalTokens - (prevNodeTokens[n.id] ?? 0)),
+      totalTokens: n.totalTokens,
+      pixelsPlaced: n.pixelsPlaced,
+      pixelCredits: n.pixelCredits,
+      lastSeen: n.lastSeen.toISOString(),
+    }))
+    .sort((a, b) => b.periodTokens - a.periodTokens || b.totalTokens - a.totalTokens)
+    .map((c, i) => ({ ...c, rank: i + 1 }));
+
+  return {
+    generatedAt: now.toISOString(),
+    live: {
+      totalNodes: allNodes.length,
+      activeNodes24h,
+      onlineNow,
+      totalTokens,
+      totalPixelsPlaced,
+      totalSubPixels: subPixelCount,
+      messageCount,
+      computeSeconds,
+      pixelCreditsInCirculation,
+    },
+    period: { label: periodLabel, tokenDelta, pixelDelta, computeSecondsDelta, newContributors },
+    trend,
+    contributors,
+  };
+}
+
+export function renderAnalyticsEmailHtml(data: AnalyticsData): string {
+  const fmt = (n: number) => n.toLocaleString("en-US");
+  const fmtSec = (s: number) => {
+    if (s < 60) return `${s.toFixed(1)}s`;
+    if (s < 3600) return `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
+    return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+  };
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const delta = (n: number) =>
+    n > 0 ? `<span style="color:#7aadad">▲ +${fmt(n)}</span>` : `<span style="color:#8090a0">—</span>`;
+
+  const trendRows = data.trend.length > 0
+    ? data.trend.slice(-10).map(t => `
+      <tr style="border-bottom:1px solid #1a1a2a">
+        <td style="padding:5px 10px;color:#8090a0;font-family:monospace;font-size:12px">${esc(t.date)}</td>
+        <td style="padding:5px 10px;text-align:right;font-family:monospace;font-size:12px">${delta(t.tokenDelta)}</td>
+        <td style="padding:5px 10px;text-align:right;font-family:monospace;font-size:12px">${delta(t.pixelDelta)}</td>
+        <td style="padding:5px 10px;text-align:right;font-family:monospace;font-size:12px;color:#8faf8a">${fmt(t.activeNodes)}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="4" style="padding:12px;color:#8090a0;text-align:center">No historical snapshots yet</td></tr>`;
+
+  const topContributors = data.contributors.slice(0, 10);
+  const contributorRows = topContributors.length > 0
+    ? topContributors.map(c => `
+      <tr style="border-bottom:1px solid #1a1a2a">
+        <td style="padding:5px 10px;color:#c4a882;font-family:monospace;font-size:12px">${c.rank}</td>
+        <td style="padding:5px 10px;color:#e8d5b0;font-size:12px">${esc(c.nodeName)}</td>
+        <td style="padding:5px 10px;text-align:right;font-family:monospace;font-size:12px;color:#7aadad">+${fmt(c.periodTokens)}</td>
+        <td style="padding:5px 10px;text-align:right;font-family:monospace;font-size:12px;color:#a98ec4">${fmt(c.pixelsPlaced)}</td>
+        <td style="padding:5px 10px;text-align:center;font-size:11px;color:${c.status === "online" ? "#8faf8a" : "#8090a0"}">${c.status}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="5" style="padding:12px;color:#8090a0;text-align:center">No contributions this period</td></tr>`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>NeuroCompute Analytics Report</title></head>
+<body style="margin:0;padding:0;background:#0a0a0f;font-family:Arial,sans-serif;color:#e8d5b0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0f;padding:32px 0;">
+    <tr><td align="center">
+      <table width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#11111a;border:1px solid #2a2a3a;border-radius:8px;overflow:hidden;">
+
+        <tr><td style="background:#0d1a2a;padding:24px 32px;border-bottom:1px solid #1a2a3a;">
+          <div style="font-size:11px;letter-spacing:3px;color:#7aadad;text-transform:uppercase;margin-bottom:6px">NEUROCOMPUTE NETWORK</div>
+          <div style="font-size:22px;font-weight:bold;color:#e8d5b0">Analytics Report</div>
+          <div style="font-size:12px;color:#8090a0;margin-top:4px;font-family:monospace">${esc(data.period.label)}</div>
+          <div style="font-size:11px;color:#4a4a5a;margin-top:2px;font-family:monospace">Generated ${esc(data.generatedAt.replace("T"," ").slice(0,19))} UTC</div>
+        </td></tr>
+
+        <tr><td style="padding:24px 32px 8px;">
+          <table width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td width="25%" style="padding-right:6px;">
+              <div style="background:#0d1a1a;border:1px solid #1a3a3a;border-radius:6px;padding:14px;text-align:center;">
+                <div style="font-size:10px;letter-spacing:2px;color:#7aadad;text-transform:uppercase;margin-bottom:6px">Compute</div>
+                <div style="font-size:22px;font-weight:bold;color:#7aadad;font-family:monospace">${fmtSec(data.period.computeSecondsDelta)}</div>
+                <div style="font-size:10px;color:#8090a0;margin-top:3px">period</div>
+                <div style="font-size:10px;color:#8090a0;font-family:monospace">All: ${fmtSec(data.live.computeSeconds)}</div>
+              </div>
+            </td>
+            <td width="25%" style="padding-right:6px;">
+              <div style="background:#1a0d1a;border:1px solid #2a1a2a;border-radius:6px;padding:14px;text-align:center;">
+                <div style="font-size:10px;letter-spacing:2px;color:#a98ec4;text-transform:uppercase;margin-bottom:6px">Pixels</div>
+                <div style="font-size:22px;font-weight:bold;color:#a98ec4;font-family:monospace">${fmt(data.period.pixelDelta)}</div>
+                <div style="font-size:10px;color:#8090a0;margin-top:3px">period</div>
+                <div style="font-size:10px;color:#8090a0;font-family:monospace">Sub: ${fmt(data.live.totalSubPixels)}</div>
+              </div>
+            </td>
+            <td width="25%" style="padding-right:6px;">
+              <div style="background:#0d1a0d;border:1px solid #1a2a1a;border-radius:6px;padding:14px;text-align:center;">
+                <div style="font-size:10px;letter-spacing:2px;color:#8faf8a;text-transform:uppercase;margin-bottom:6px">Nodes</div>
+                <div style="font-size:22px;font-weight:bold;color:#8faf8a;font-family:monospace">${data.live.activeNodes24h}</div>
+                <div style="font-size:10px;color:#8090a0;margin-top:3px">active 24h</div>
+                <div style="font-size:10px;color:#8090a0;font-family:monospace">Online: ${data.live.onlineNow}</div>
+              </div>
+            </td>
+            <td width="25%">
+              <div style="background:#1a1a0d;border:1px solid #2a2a1a;border-radius:6px;padding:14px;text-align:center;">
+                <div style="font-size:10px;letter-spacing:2px;color:#c4a882;text-transform:uppercase;margin-bottom:6px">Tokens</div>
+                <div style="font-size:22px;font-weight:bold;color:#c4a882;font-family:monospace">${fmt(data.period.tokenDelta)}</div>
+                <div style="font-size:10px;color:#8090a0;margin-top:3px">period</div>
+                <div style="font-size:10px;color:#8090a0;font-family:monospace">Total: ${fmt(data.live.totalTokens)}</div>
+              </div>
+            </td>
+          </tr></table>
+        </td></tr>
+
+        <tr><td style="padding:16px 32px 0;">
+          <div style="background:#111120;border:1px solid #1a1a2a;border-radius:6px;padding:16px;">
+            <div style="font-size:11px;letter-spacing:2px;color:#c4a882;text-transform:uppercase;margin-bottom:10px">Historical Trend</div>
+            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+              <tr style="border-bottom:1px solid #2a2a3a">
+                <th style="padding:5px 10px;text-align:left;color:#8090a0;font-weight:normal;font-size:10px">Date</th>
+                <th style="padding:5px 10px;text-align:right;color:#8090a0;font-weight:normal;font-size:10px">Tokens</th>
+                <th style="padding:5px 10px;text-align:right;color:#8090a0;font-weight:normal;font-size:10px">Pixels</th>
+                <th style="padding:5px 10px;text-align:right;color:#8090a0;font-weight:normal;font-size:10px">Active</th>
+              </tr>
+              ${trendRows}
+            </table>
+          </div>
+        </td></tr>
+
+        <tr><td style="padding:16px 32px 24px;">
+          <div style="background:#111120;border:1px solid #1a1a2a;border-radius:6px;padding:16px;">
+            <div style="font-size:11px;letter-spacing:2px;color:#c4a882;text-transform:uppercase;margin-bottom:10px">Top 10 Contributors — This Period</div>
+            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+              <tr style="border-bottom:1px solid #2a2a3a">
+                <th style="padding:5px 10px;text-align:left;color:#8090a0;font-weight:normal;font-size:10px">#</th>
+                <th style="padding:5px 10px;text-align:left;color:#8090a0;font-weight:normal;font-size:10px">Node</th>
+                <th style="padding:5px 10px;text-align:right;color:#8090a0;font-weight:normal;font-size:10px">Period Tokens</th>
+                <th style="padding:5px 10px;text-align:right;color:#8090a0;font-weight:normal;font-size:10px">Pixels</th>
+                <th style="padding:5px 10px;text-align:center;color:#8090a0;font-weight:normal;font-size:10px">Status</th>
+              </tr>
+              ${contributorRows}
+            </table>
+          </div>
+        </td></tr>
+
+        <tr><td style="background:#0a0a10;padding:14px 32px;border-top:1px solid #1a1a2a;text-align:center;">
+          <div style="font-size:11px;color:#4a4a5a;font-family:monospace">NeuroCompute — Decentralized AI Compute Network</div>
+          <div style="font-size:10px;color:#3a3a4a;font-family:monospace;margin-top:3px">Messages: ${fmt(data.live.messageCount)} · Credits in circulation: ${fmt(data.live.pixelCreditsInCirculation)} · New nodes this period: ${data.period.newContributors}</div>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
 }
