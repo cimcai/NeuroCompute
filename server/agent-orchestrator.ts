@@ -632,48 +632,65 @@ async function placePixelForNode(
     }
   } catch {}
 
-  const updated = await storage.spendPixelCredit(node.id);
-
   if (isCellOccupied) {
-    const placed: any[] = [];
-    for (let i = 0; i < SUB_PIXELS_PER_CREDIT; i++) {
-      const subX = Math.floor(Math.random() * 8);
-      const subY = Math.floor(Math.random() * 8);
-      try {
-        const sp = await storage.placeSubPixel({
-          regionX: x, regionY: y, subX, subY, color,
-          nodeId: node.id, nodeName,
-        });
-        placed.push(sp);
-        config.broadcastAll(JSON.stringify({
-          type: "subPixelPlaced",
-          payload: { id: sp.id, regionX: x, regionY: y, subX, subY, color, nodeName, nodeId: node.id },
-        }));
-      } catch {}
-    }
+    const updated = await storage.spendPixelCredit(node.id);
 
-    console.log(
-      `[orchestrator] ${nodeName} → district detail (${x},${y}): ${placed.length} sub-pixels placed — ${updated.pixelCredits} credits left`
-    );
+    const existingSubPixels = await storage.getSubPixels(x, y);
+    const macroColor: string = canvasData.grid[y][x];
+    const macroColorName = getColorName(macroColor);
+
+    const sent = config.sendToNode(node.id, JSON.stringify({
+      type: "subPixelGoalRequest",
+      payload: {
+        regionX: x,
+        regionY: y,
+        macroColor,
+        macroColorName,
+        existingSubPixels: existingSubPixels.map(sp => ({
+          subX: sp.subX,
+          subY: sp.subY,
+          color: sp.color,
+          nodeName: sp.nodeName,
+        })),
+        creditsLeft: updated.pixelCredits,
+        goalDescription,
+      },
+    }));
 
     config.broadcastAll(JSON.stringify({
       type: "pixelPlaced",
-      payload: { x, y, color, agent: nodeName, nodeId: node.id, pixelCredits: updated.pixelCredits, isSubPixelOnly: true },
-    }));
-
-    const sent = config.sendToNode(node.id, JSON.stringify({
-      type: "pixelCommentRequest",
-      payload: { x, y, color, colorName, wasEmpty: false, creditsLeft: updated.pixelCredits, goalDescription, isDetailWork: true },
+      payload: { x, y, color: macroColor, agent: nodeName, nodeId: node.id, pixelCredits: updated.pixelCredits, isSubPixelOnly: true },
     }));
 
     if (!sent) {
+      const placed: any[] = [];
+      for (let i = 0; i < SUB_PIXELS_PER_CREDIT; i++) {
+        const subX = Math.floor(Math.random() * 8);
+        const subY = Math.floor(Math.random() * 8);
+        try {
+          const sp = await storage.placeSubPixel({
+            regionX: x, regionY: y, subX, subY, color: macroColor,
+            nodeId: node.id, nodeName,
+          });
+          placed.push(sp);
+          config.broadcastAll(JSON.stringify({
+            type: "subPixelPlaced",
+            payload: { id: sp.id, regionX: x, regionY: y, subX, subY, color: macroColor, nodeName, nodeId: node.id },
+          }));
+        } catch {}
+      }
+      console.log(`[orchestrator] ${nodeName} → district (${x},${y}): ${placed.length} sub-pixels (offline fallback) — ${updated.pixelCredits} credits left`);
       config.broadcastAll(JSON.stringify({
         type: "pixelObservationRequest",
-        payload: { placerName: nodeName, x, y, colorName, goalDescription, isDetailWork: true },
+        payload: { placerName: nodeName, x, y, colorName: macroColorName, goalDescription, isDetailWork: true },
       }));
+    } else {
+      console.log(`[orchestrator] ${nodeName} → district (${x},${y}): subPixelGoalRequest sent — ${updated.pixelCredits} credits left`);
     }
     return;
   }
+
+  const updated = await storage.spendPixelCredit(node.id);
 
   const agent = `NeuroCompute-${nodeName}`;
   await cimc.placePixel(x, y, color, agent);

@@ -1015,6 +1015,30 @@ export async function registerRoutes(
               payload: { nodeId: avatarNodeId, avatar },
             })
           );
+        } else if (message.type === "subPixelGoalResponse") {
+          const { nodeId: respNodeId, regionX, regionY, placements } = message.payload || {};
+          if (typeof respNodeId !== "number" || typeof regionX !== "number" || typeof regionY !== "number") return;
+          if (!Array.isArray(placements) || placements.length === 0) return;
+          const respNode = await storage.getNode(respNodeId);
+          if (!respNode) return;
+          const respName = respNode.displayName || respNode.name;
+          for (const p of placements.slice(0, 4)) {
+            const subX = Math.max(0, Math.min(7, Math.floor(Number(p.subX))));
+            const subY = Math.max(0, Math.min(7, Math.floor(Number(p.subY))));
+            const color = typeof p.color === "string" && /^#[0-9A-Fa-f]{6}$/.test(p.color) ? p.color : "#7AADAD";
+            try {
+              const sp = await storage.placeSubPixel({
+                regionX, regionY, subX, subY, color,
+                nodeId: respNodeId, nodeName: respName,
+              });
+              broadcastAll(JSON.stringify({
+                type: "subPixelPlaced",
+                payload: { id: sp.id, regionX, regionY, subX, subY, color, nodeName: respName, nodeId: respNodeId },
+              }));
+            } catch (err) {
+              logger.error("ws", "subPixelGoalResponse placement error", err);
+            }
+          }
         } else if (message.type === "journalEntry") {
           const { content, nodeName, nodeId: entryNodeId } = message.payload;
           if (!content || !nodeName) return;

@@ -114,6 +114,7 @@ export function useComputeNode() {
   const pixelCommentQueueRef = useRef<{ x: number; y: number; color: string; colorName?: string; wasEmpty: boolean; creditsLeft: number; goalDescription?: string | null }[]>([]);
   const pixelObservationQueueRef = useRef<{ placerName: string; x: number; y: number; colorName: string; goalDescription?: string | null }[]>([]);
   const goalQueueRef = useRef<{ nodeId: number; currentX: number; currentY: number; credits: number; nearbyColors: string }[]>([]);
+  const subPixelGoalQueueRef = useRef<{ regionX: number; regionY: number; macroColor: string; macroColorName: string; existingSubPixels: { subX: number; subY: number; color: string; nodeName: string }[]; creditsLeft: number; goalDescription?: string | null }[]>([]);
   const avatarQueueRef = useRef<boolean[]>([]);
   const identityQueueRef = useRef<boolean[]>([]);
   const nodeIdRef = useRef<number | null>(null);
@@ -238,6 +239,15 @@ export function useComputeNode() {
     const unsub = ws.subscribe("pixelGoalRequest", (data: { nodeId: number; currentX: number; currentY: number; credits: number; nearbyColors: string }) => {
       if (isRunningRef.current && engineRef.current) {
         goalQueueRef.current.push(data);
+      }
+    });
+    return unsub;
+  }, [ws]);
+
+  useEffect(() => {
+    const unsub = ws.subscribe("subPixelGoalRequest", (data: { regionX: number; regionY: number; macroColor: string; macroColorName: string; existingSubPixels: { subX: number; subY: number; color: string; nodeName: string }[]; creditsLeft: number; goalDescription?: string | null }) => {
+      if (isRunningRef.current && engineRef.current) {
+        subPixelGoalQueueRef.current.push(data);
       }
     });
     return unsub;
@@ -491,6 +501,87 @@ Design something unique! Output ONLY the 8 ROW lines, nothing else.`;
               nodeId: nodeIdRef.current,
               avatar: grid,
             });
+          }
+          continue;
+        }
+
+        const subPixelTask = subPixelGoalQueueRef.current.shift();
+        if (subPixelTask) {
+          const occupiedList = subPixelTask.existingSubPixels.length > 0
+            ? subPixelTask.existingSubPixels.map(sp => `(${sp.subX},${sp.subY})`).join(", ")
+            : "none yet";
+
+          const subPixelPrompt = `You are painting fine detail inside district (${subPixelTask.regionX},${subPixelTask.regionY}) — an 8×8 sub-canvas.
+You are ${nodeNameRef.current || "an AI node"}. Macro cell color: ${subPixelTask.macroColorName}.
+Already painted positions in this district: ${occupiedList}.
+Credits left: ${subPixelTask.creditsLeft}.${subPixelTask.goalDescription ? `\nYour goal: ${subPixelTask.goalDescription}.` : ""}
+
+Choose up to 4 positions to add meaningful detail — texture, patterns, highlights, shadows, or accents. Avoid already-painted positions. Coordinates are 0-7.
+
+Respond ONLY in this format (up to 4 lines):
+SUB: x,y #hexcolor`;
+
+          let subResponse = "";
+          const subStream = await engineRef.current.chat.completions.create({
+            messages: [
+              { role: "system", content: `You are ${nodeNameRef.current || "an AI node"} painting sub-pixel detail in a tiny 8×8 district. Output SUB: x,y #hexcolor lines only. Up to 4. x and y are 0-7. No thinking, no explanations.` },
+              { role: "user", content: subPixelPrompt },
+            ],
+            stream: true,
+            max_tokens: 80,
+            temperature: 1.0,
+          });
+
+          for await (const chunk of subStream) {
+            if (!isRunningRef.current) break;
+            const content = chunk.choices[0]?.delta?.content || "";
+            subResponse += content;
+            setSessionTokens((prev) => prev + 1);
+            tokensSinceLastTickRef.current += 1;
+          }
+
+          const placements: { subX: number; subY: number; color: string }[] = [];
+          const subMatches = [...subResponse.matchAll(/SUB:\s*(\d+)\s*,\s*(\d+)\s*(#[0-9A-Fa-f]{6})/gi)];
+          const usedKeys = new Set(subPixelTask.existingSubPixels.map(sp => `${sp.subX},${sp.subY}`));
+          for (const match of subMatches) {
+            const subX = Math.max(0, Math.min(7, parseInt(match[1])));
+            const subY = Math.max(0, Math.min(7, parseInt(match[2])));
+            const key = `${subX},${subY}`;
+            if (!placements.some(p => `${p.subX},${p.subY}` === key)) {
+              placements.push({ subX, subY, color: match[3] });
+              usedKeys.add(key);
+            }
+            if (placements.length >= 4) break;
+          }
+
+          if (placements.length === 0) {
+            for (let i = 0; i < 2; i++) {
+              let subX = Math.floor(Math.random() * 8);
+              let subY = Math.floor(Math.random() * 8);
+              let attempts = 0;
+              while (usedKeys.has(`${subX},${subY}`) && attempts < 20) {
+                subX = Math.floor(Math.random() * 8);
+                subY = Math.floor(Math.random() * 8);
+                attempts++;
+              }
+              placements.push({ subX, subY, color: subPixelTask.macroColor });
+            }
+          }
+
+          if (placements.length > 0 && nodeIdRef.current) {
+            ws.emit("subPixelGoalResponse", {
+              nodeId: nodeIdRef.current,
+              regionX: subPixelTask.regionX,
+              regionY: subPixelTask.regionY,
+              placements,
+            });
+            if (nodeNameRef.current) {
+              ws.emit("journalEntry", {
+                content: `🔬 (${subPixelTask.regionX},${subPixelTask.regionY}) added ${placements.length} detail pixel${placements.length !== 1 ? "s" : ""}`,
+                nodeName: nodeNameRef.current,
+                nodeId: nodeIdRef.current,
+              });
+            }
           }
           continue;
         }
