@@ -550,7 +550,12 @@ async function runPixelAgent(config: OrchestratorConfig) {
           }
 
           if (node.pixelCredits >= 1) {
-            const dir = DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)];
+            const shuffled = [...DIRECTIONS].sort(() => Math.random() - 0.5);
+            const dir = shuffled.find(d => {
+              const tx = Math.max(0, Math.min(31, node.pixelX + d.dx));
+              const ty = Math.max(0, Math.min(31, node.pixelY + d.dy));
+              return !wallSet.has(`${tx},${ty}`);
+            }) ?? shuffled[0];
             const newX = Math.max(0, Math.min(31, node.pixelX + dir.dx));
             const newY = Math.max(0, Math.min(31, node.pixelY + dir.dy));
             if (newX !== node.pixelX || newY !== node.pixelY) {
@@ -567,7 +572,7 @@ async function runPixelAgent(config: OrchestratorConfig) {
 
             if (node.pixelCredits >= 1) {
               const color = PIXEL_COLORS[Math.floor(Math.random() * PIXEL_COLORS.length)];
-              await placePixelForNode(config, node, nodeName, newX, newY, color, canvasData, wallSet);
+              await placePixelForNode(config, node, nodeName, node.pixelX, node.pixelY, color, canvasData, wallSet);
             }
           }
           continue;
@@ -594,7 +599,27 @@ async function runPixelAgent(config: OrchestratorConfig) {
           const newX = Math.max(0, Math.min(31, node.pixelX + dx * steps));
           const newY = Math.max(0, Math.min(31, node.pixelY + dy * steps));
 
-          if (newX !== node.pixelX || newY !== node.pixelY) {
+          // Check for wall at destination; if blocked, attempt solo wall push
+          const destWallKey = `${newX},${newY}`;
+          if (wallSet.has(destWallKey)) {
+            const wallsData = await storage.getWalls();
+            const blockedWall = wallsData.find(w => w.x === newX && w.y === newY);
+            if (blockedWall && node.pixelCredits >= 1) {
+              // Attempt solo push in movement direction
+              const pushX = Math.max(0, Math.min(31, newX + dx));
+              const pushY = Math.max(0, Math.min(31, newY + dy));
+              if (!wallSet.has(`${pushX},${pushY}`) && (pushX !== newX || pushY !== newY)) {
+                const movedWall = await storage.moveWall(blockedWall.id, pushX, pushY);
+                wallSet.delete(destWallKey);
+                wallSet.add(`${pushX},${pushY}`);
+                config.broadcastAll(JSON.stringify({
+                  type: "wallMoved",
+                  payload: { id: movedWall.id, fromX: newX, fromY: newY, toX: pushX, toY: pushY },
+                }));
+                console.log(`[orchestrator] ${nodeName} solo-pushed wall ${blockedWall.id} from (${newX},${newY}) to (${pushX},${pushY})`);
+              }
+            }
+          } else if (newX !== node.pixelX || newY !== node.pixelY) {
             await storage.moveNode(node.id, newX, newY);
             await storage.deductMoveCredit(node.id, steps);
             config.broadcastAll(
@@ -712,7 +737,7 @@ async function placePixelForNode(
         } catch {}
       }
       console.log(`[orchestrator] ${nodeName} → district (${x},${y}): ${placed.length} sub-pixels (offline fallback) — ${updated.pixelCredits} credits left`);
-      config.broadcastAll(JSON.stringify({
+      config.broadcastNearby(x, y, SPATIAL_OBSERVATION_RADIUS, JSON.stringify({
         type: "pixelObservationRequest",
         payload: { placerName: nodeName, x, y, colorName: macroColorName, goalDescription, isDetailWork: true },
       }));
@@ -742,7 +767,7 @@ async function placePixelForNode(
   }));
 
   if (!sent) {
-    config.broadcastAll(JSON.stringify({
+    config.broadcastNearby(x, y, SPATIAL_OBSERVATION_RADIUS, JSON.stringify({
       type: "pixelObservationRequest",
       payload: { placerName: nodeName, x, y, colorName, goalDescription },
     }));
