@@ -60,7 +60,7 @@ export const ws = {
   receive: {
     nodeJoined: z.object({ id: z.number(), name: z.string() }),
     nodeLeft: z.object({ id: z.number() }),
-    statsUpdate: z.object({ id: z.number(), totalTokens: z.number(), status: z.string(), tokensPerSecond: z.number(), currentRate: z.number().optional(), tokensSinceLastCredit: z.number().optional() }),
+    statsUpdate: z.object({ id: z.number(), totalTokens: z.number(), pixelCredits: z.number().optional(), pixelsPlaced: z.number().optional(), status: z.string(), tokensPerSecond: z.number(), currentRate: z.number().optional(), tokensSinceLastCredit: z.number().optional() }),
     chatMessage: z.object({ id: z.number(), content: z.string(), senderName: z.string(), role: z.string() }),
     chatResponseChunk: z.object({ messageId: z.number(), chunk: z.string(), done: z.boolean(), nodeName: z.string() }),
     chatPending: z.object({ content: z.string() }),
