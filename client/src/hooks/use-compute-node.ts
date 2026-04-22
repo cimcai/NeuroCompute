@@ -677,7 +677,7 @@ SUB: x,y #hexcolor`;
             : `Someone in the network said: "${chatPrompt}"\nReply as ${myName} in one casual sentence.`;
 
           const memoryPart = selfMemoryRef.current.length > 0
-            ? ` Recent memories: ${selfMemoryRef.current.slice(-3).join(" | ")}.`
+            ? ` Recent memories: ${selfMemoryRef.current.slice(-5).join(" | ")}.`
             : "";
 
           let fullResponse = "";

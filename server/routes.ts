@@ -774,6 +774,11 @@ export async function registerRoutes(
       const node = await storage.spendPixelCredit(Number(nodeId));
       const agentName = currentNode.displayName || node.name;
       const result = await cimc.placePixel(x, y, color, `NeuroCompute-${agentName}`);
+      storage.appendNodeMemoryEvent(Number(nodeId), {
+        type: "pixelPlaced",
+        content: `placed a ${color} pixel at (${x},${y}) on the canvas`,
+        ts: Date.now(),
+      }).catch(() => {});
       broadcastAll(JSON.stringify({
         type: "pixelPlaced",
         payload: { x, y, color, agent: agentName, nodeId: node.id, pixelCredits: node.pixelCredits },

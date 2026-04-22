@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Zap, Layers, MapPin, Clock, Target, Radio, ChevronDown } from "lucide-react";
@@ -71,8 +71,10 @@ function formatNumber(n: number): string {
 export default function AgentProfile() {
   const params = useParams<{ id: string }>();
   const nodeId = Number(params.id);
-  const [journalOffset, setJournalOffset] = useState(0);
-  const [allJournal, setAllJournal] = useState<JournalEntry[]>([]);
+  const [extraJournal, setExtraJournal] = useState<JournalEntry[]>([]);
+  const [canLoadMore, setCanLoadMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadedCountRef = useRef(0);
   const LIMIT = 20;
 
   const { data: profile, isLoading, isError } = useQuery<NodeProfile>({
@@ -85,35 +87,34 @@ export default function AgentProfile() {
     refetchInterval: 15000,
   });
 
-  const { data: morePage, isFetching: loadingMore, refetch: fetchMore } = useQuery<NodeProfile>({
-    queryKey: ["/api/nodes", nodeId, "profile", "page", journalOffset],
-    queryFn: () => fetch(`/api/nodes/${nodeId}/profile?limit=${LIMIT}&offset=${journalOffset}`).then(r => r.json()),
-    enabled: false,
-  });
-
   const handleLoadMore = useCallback(async () => {
-    const nextOffset = (allJournal.length > 0 ? allJournal.length : profile?.journal.length ?? 0);
-    setJournalOffset(nextOffset);
-    const result = await fetchMore();
-    if (result.data) {
-      const incoming = result.data.journal;
-      setAllJournal(prev => {
+    const baseCount = profile?.journal.length ?? 0;
+    const nextOffset = baseCount + loadedCountRef.current;
+    setLoadingMore(true);
+    try {
+      const r = await fetch(`/api/nodes/${nodeId}/profile?limit=${LIMIT}&offset=${nextOffset}`);
+      const data: NodeProfile = await r.json();
+      const incoming = data.journal;
+      setExtraJournal(prev => {
         const existing = new Set(prev.map(e => e.id));
         const deduped = incoming.filter(e => !existing.has(e.id));
+        loadedCountRef.current += deduped.length;
         return [...prev, ...deduped];
       });
+      setCanLoadMore(data.hasMore);
+    } finally {
+      setLoadingMore(false);
     }
-  }, [allJournal.length, profile?.journal.length, fetchMore]);
+  }, [nodeId, profile?.journal.length]);
+
+  const hasInitialMore = profile?.hasMore ?? false;
+  const showLoadMore = extraJournal.length > 0 ? canLoadMore : hasInitialMore;
 
   const displayName = profile?.displayName || profile?.name || "Unknown";
 
   const baseJournal = profile?.journal ?? [];
-  const combinedJournal = allJournal.length > 0
-    ? [...baseJournal, ...allJournal.filter(e => !baseJournal.find(b => b.id === e.id))]
-    : baseJournal;
-  const canLoadMore = allJournal.length > 0
-    ? (morePage?.hasMore ?? false)
-    : (profile?.hasMore ?? false);
+  const existingIds = new Set(baseJournal.map(e => e.id));
+  const combinedJournal = [...baseJournal, ...extraJournal.filter(e => !existingIds.has(e.id))];
 
   return (
     <div className="min-h-screen p-4 md:p-8 max-w-2xl mx-auto space-y-6">
@@ -275,7 +276,7 @@ export default function AgentProfile() {
                       </div>
                     ))}
                   </div>
-                  {canLoadMore && (
+                  {showLoadMore && (
                     <div className="p-3 border-t border-white/5 flex justify-center">
                       <Button
                         variant="ghost"
