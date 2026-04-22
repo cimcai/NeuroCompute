@@ -1,6 +1,16 @@
 import { db } from "./db";
-import { nodes, messages, bridgeGames, subPixels, journalEntries, dailySnapshots, getPixelRate, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type SubPixel, type InsertSubPixel, type JournalEntry, type InsertJournalEntry, type DailySnapshot, type InsertDailySnapshot } from "@shared/schema";
+import { nodes, messages, bridgeGames, subPixels, journalEntries, dailySnapshots, patrons, getPixelRate, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type SubPixel, type InsertSubPixel, type JournalEntry, type InsertJournalEntry, type DailySnapshot, type InsertDailySnapshot, type Patron } from "@shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
+
+export interface PatronLeaderboardEntry {
+  id: number;
+  name: string;
+  agentCount: number;
+  activeAgents: number;
+  totalTokens: number;
+  pixelsPlaced: number;
+  createdAt: Date;
+}
 
 export interface IStorage {
   getNodes(): Promise<Node[]>;
@@ -35,6 +45,12 @@ export interface IStorage {
   getSubPixelCount(): Promise<number>;
   getMessageCount(): Promise<number>;
   getJournalEntryCount(): Promise<number>;
+  createPatron(name: string, tokenHash: string): Promise<Patron>;
+  getPatronByTokenHash(hash: string): Promise<Patron | undefined>;
+  getPatronById(id: number): Promise<Patron | undefined>;
+  linkNodeToPatron(nodeId: number, patronId: number): Promise<Node>;
+  getPatronLeaderboard(): Promise<PatronLeaderboardEntry[]>;
+  getNetworkStats(): Promise<{ activeAgents: number; totalTokens: number; totalPatrons: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -294,6 +310,65 @@ export class DatabaseStorage implements IStorage {
   async getJournalEntryCount(): Promise<number> {
     const [result] = await db.select({ count: sql<number>`count(*)::int` }).from(journalEntries);
     return result?.count ?? 0;
+  }
+
+  async createPatron(name: string, tokenHash: string): Promise<Patron> {
+    const [created] = await db.insert(patrons).values({ name, tokenHash }).returning();
+    return created;
+  }
+
+  async getPatronByTokenHash(hash: string): Promise<Patron | undefined> {
+    const [patron] = await db.select().from(patrons).where(eq(patrons.tokenHash, hash));
+    return patron;
+  }
+
+  async getPatronById(id: number): Promise<Patron | undefined> {
+    const [patron] = await db.select().from(patrons).where(eq(patrons.id, id));
+    return patron;
+  }
+
+  async linkNodeToPatron(nodeId: number, patronId: number): Promise<Node> {
+    const [updated] = await db.update(nodes)
+      .set({ patronId })
+      .where(eq(nodes.id, nodeId))
+      .returning();
+    if (!updated) throw new Error("Node not found");
+    return updated;
+  }
+
+  async getPatronLeaderboard(): Promise<PatronLeaderboardEntry[]> {
+    const results = await db
+      .select({
+        id: patrons.id,
+        name: patrons.name,
+        createdAt: patrons.createdAt,
+        agentCount: sql<number>`count(${nodes.id})::int`,
+        activeAgents: sql<number>`count(${nodes.id}) filter (where ${nodes.status} = 'computing')::int`,
+        totalTokens: sql<number>`coalesce(sum(${nodes.totalTokens}), 0)::int`,
+        pixelsPlaced: sql<number>`coalesce(sum(${nodes.pixelsPlaced}), 0)::int`,
+      })
+      .from(patrons)
+      .leftJoin(nodes, eq(nodes.patronId, patrons.id))
+      .groupBy(patrons.id, patrons.name, patrons.createdAt)
+      .orderBy(desc(sql`coalesce(sum(${nodes.totalTokens}), 0)`));
+    return results;
+  }
+
+  async getNetworkStats(): Promise<{ activeAgents: number; totalTokens: number; totalPatrons: number }> {
+    const [nodeStats] = await db
+      .select({
+        activeAgents: sql<number>`count(*) filter (where ${nodes.status} = 'computing')::int`,
+        totalTokens: sql<number>`coalesce(sum(${nodes.totalTokens}), 0)::int`,
+      })
+      .from(nodes);
+    const [patronCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(patrons);
+    return {
+      activeAgents: nodeStats?.activeAgents ?? 0,
+      totalTokens: nodeStats?.totalTokens ?? 0,
+      totalPatrons: patronCount?.count ?? 0,
+    };
   }
 }
 

@@ -15,10 +15,22 @@ export function getPixelRate(totalNetworkTokens: number): number {
 
 export const GRID_CENTER = 16;
 
+export const patrons = pgTable("patrons", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPatronSchema = createInsertSchema(patrons).omit({ id: true, createdAt: true });
+export type Patron = typeof patrons.$inferSelect;
+export type InsertPatron = z.infer<typeof insertPatronSchema>;
+
 export const nodes = pgTable("nodes", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   displayName: text("display_name"),
+  patronId: integer("patron_id"),
   totalTokens: integer("total_tokens").default(0).notNull(),
   tokensSinceLastCredit: integer("tokens_since_last_credit").default(0).notNull(),
   pixelCredits: integer("pixel_credits").default(0).notNull(),

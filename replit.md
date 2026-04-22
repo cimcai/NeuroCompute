@@ -25,6 +25,8 @@ The application consists of a React + TypeScript + Vite frontend using TailwindC
 - **Agent Orchestrator**: Server-side agents autonomously direct compute nodes for chat responses, Bridge of Death games, pixel placement, and spirit observation polling.
 - **CIMC Spirits**: Room 1 of CIMC is polled every 60s. New spirit messages (e.g. from "Iwakura") are saved as `role: "spirit"` messages and broadcast via `chatMessage`. Displayed with sparkle icon and italic lavender styling in Chat.
 - **Analytics & Email Reports**: Automated daily/weekly email reports (via Resend) showing compute seconds, pixels placed, and top contributors. Snapshots are taken each run and compared to build period deltas. Admin API endpoints for live analytics data and email preview.
+- **Patron System**: Persistent identity for compute contributors. Patrons get a secret token on first visit (stored in localStorage); pasting the token on another device restores their account. Multiple agents can run under one patron. The leaderboard groups by patron, summing tokens/pixels across all their agents. Patron state is stored in the `patrons` DB table with hashed tokens.
+- **Network Stats Bar**: Homepage prominently displays 3 live stats: active agents computing right now, total ops (tokens × 1M, formatted as B/T), and volunteer patron count. Auto-refreshes every 30 seconds.
 
 **UI/UX Decisions:**
 - Dark cyberpunk theme with TailwindCSS.

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import { createHmac } from "crypto";
+import { createHmac, createHash, randomBytes } from "crypto";
 import { storage } from "./storage";
 import { api, ws as wsSchema } from "@shared/routes";
 import { z } from "zod";
@@ -90,6 +90,81 @@ export async function registerRoutes(
     } catch (err) {
       logger.error("api", "Display name update error", err);
       res.status(500).json({ message: "Failed to update display name" });
+    }
+  });
+
+  // Patron routes
+  app.post("/api/patrons/claim", async (req, res) => {
+    try {
+      const { name } = req.body;
+      if (!name || typeof name !== "string" || name.trim().length < 2) {
+        return res.status(400).json({ message: "Name must be at least 2 characters" });
+      }
+      const trimmed = name.trim().slice(0, 32);
+      const token = randomBytes(20).toString("hex");
+      const tokenHash = createHash("sha256").update(token).digest("hex");
+      const patron = await storage.createPatron(trimmed, tokenHash);
+      res.status(201).json({ patron, token });
+    } catch (err: any) {
+      if (err.message?.includes("unique")) {
+        return res.status(409).json({ message: "A patron with that name already exists — try a different name" });
+      }
+      logger.error("api", "Patron claim error", err);
+      res.status(500).json({ message: "Failed to create patron" });
+    }
+  });
+
+  app.post("/api/patrons/lookup", async (req, res) => {
+    try {
+      const { token } = req.body;
+      if (!token || typeof token !== "string") {
+        return res.status(400).json({ message: "Token is required" });
+      }
+      const tokenHash = createHash("sha256").update(token.trim()).digest("hex");
+      const patron = await storage.getPatronByTokenHash(tokenHash);
+      if (!patron) {
+        return res.status(404).json({ message: "Invalid token — patron not found" });
+      }
+      res.json({ patron });
+    } catch (err) {
+      logger.error("api", "Patron lookup error", err);
+      res.status(500).json({ message: "Failed to look up patron" });
+    }
+  });
+
+  app.post("/api/nodes/:id/link-patron", async (req, res) => {
+    try {
+      const nodeId = Number(req.params.id);
+      const { patronId } = req.body;
+      if (!patronId || typeof patronId !== "number") {
+        return res.status(400).json({ message: "patronId is required" });
+      }
+      const node = await storage.linkNodeToPatron(nodeId, patronId);
+      res.json(node);
+    } catch (err: any) {
+      if (err.message === "Node not found") return res.status(404).json({ message: "Node not found" });
+      logger.error("api", "Link patron error", err);
+      res.status(500).json({ message: "Failed to link patron" });
+    }
+  });
+
+  app.get("/api/patrons/leaderboard", async (req, res) => {
+    try {
+      const board = await storage.getPatronLeaderboard();
+      res.json(board);
+    } catch (err) {
+      logger.error("api", "Patron leaderboard error", err);
+      res.status(500).json({ message: "Failed to fetch patron leaderboard" });
+    }
+  });
+
+  app.get("/api/network/stats", async (req, res) => {
+    try {
+      const stats = await storage.getNetworkStats();
+      res.json(stats);
+    } catch (err) {
+      logger.error("api", "Network stats error", err);
+      res.status(500).json({ message: "Failed to fetch network stats" });
     }
   });
 

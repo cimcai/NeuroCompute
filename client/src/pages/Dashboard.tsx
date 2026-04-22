@@ -1,23 +1,41 @@
 import { useComputeNode } from "@/hooks/use-compute-node";
-import { StatCard } from "@/components/StatCard";
 import { Leaderboard } from "@/components/Leaderboard";
 import { Chat } from "@/components/Chat";
-
 import { CimcFeed } from "@/components/CimcFeed";
 import { BridgeGame } from "@/components/BridgeGame";
 import { PixelCanvas } from "@/components/PixelCanvas";
 import { CanvasTimelapse } from "@/components/CanvasTimelapse";
 import { ModelSelector } from "@/components/ModelSelector";
 import { Journal } from "@/components/Journal";
+import { PatronModal } from "@/components/PatronModal";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Download, Shield, TrendingUp, AlertTriangle, Eye, Monitor, MessageSquare, Swords, Users, Radio, User, BookOpen, Film } from "lucide-react";
+import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Download, Shield, AlertTriangle, Eye, Monitor, MessageSquare, Swords, Users, Radio, User, BookOpen, Film, Key, ChevronDown } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "wouter";
+
+interface NetworkStats {
+  activeAgents: number;
+  totalTokens: number;
+  totalPatrons: number;
+}
+
+function formatOps(tokens: number): string {
+  const ops = tokens * 1_000_000;
+  if (ops >= 1e12) return `${(ops / 1e12).toFixed(1)}T`;
+  if (ops >= 1e9) return `${(ops / 1e9).toFixed(1)}B`;
+  if (ops >= 1e6) return `${(ops / 1e6).toFixed(1)}M`;
+  return ops.toLocaleString();
+}
+
+const PATRON_ID_KEY = "neurocompute_patronId";
+const PATRON_NAME_KEY = "neurocompute_patronName";
+const PATRON_TOKEN_KEY = "neurocompute_patronToken";
+const PATRON_DISMISSED_KEY = "neurocompute_patronDismissed";
 
 export default function Dashboard() {
   const node = useComputeNode();
@@ -27,6 +45,69 @@ export default function Dashboard() {
   const [hasWebGPU, setHasWebGPU] = useState<boolean | null>(null);
   const [showTimelapse, setShowTimelapse] = useState(() => !sessionStorage.getItem("neurocompute_timelapse_seen"));
   const [timelapseKey, setTimelapseKey] = useState(0);
+
+  // Patron state
+  const [patronId, setPatronId] = useState<number | null>(() => {
+    const saved = localStorage.getItem(PATRON_ID_KEY);
+    return saved ? parseInt(saved, 10) : null;
+  });
+  const [patronName, setPatronNameState] = useState<string | null>(() =>
+    localStorage.getItem(PATRON_NAME_KEY)
+  );
+  const [showPatronModal, setShowPatronModal] = useState(false);
+  const [showTokenHint, setShowTokenHint] = useState(false);
+
+  // On first visit (no patron, not dismissed), show modal after short delay
+  useEffect(() => {
+    const dismissed = localStorage.getItem(PATRON_DISMISSED_KEY);
+    if (!patronId && !dismissed) {
+      const t = setTimeout(() => setShowPatronModal(true), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [patronId]);
+
+  // Link node to patron when node is created
+  useEffect(() => {
+    if (node.nodeId && patronId) {
+      fetch(`/api/nodes/${node.nodeId}/link-patron`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patronId }),
+      }).catch(() => {});
+    }
+  }, [node.nodeId, patronId]);
+
+  const handlePatronClaimed = useCallback((id: number, name: string, token: string) => {
+    setPatronId(id);
+    setPatronNameState(name);
+    localStorage.setItem(PATRON_ID_KEY, String(id));
+    localStorage.setItem(PATRON_NAME_KEY, name);
+    localStorage.setItem(PATRON_TOKEN_KEY, token);
+    localStorage.removeItem(PATRON_DISMISSED_KEY);
+    setShowPatronModal(false);
+    // Link existing node if any
+    if (node.nodeId) {
+      fetch(`/api/nodes/${node.nodeId}/link-patron`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patronId: id }),
+      }).catch(() => {});
+    }
+  }, [node.nodeId]);
+
+  const handlePatronLooked = useCallback((id: number, name: string) => {
+    setPatronId(id);
+    setPatronNameState(name);
+    localStorage.setItem(PATRON_ID_KEY, String(id));
+    localStorage.setItem(PATRON_NAME_KEY, name);
+    localStorage.removeItem(PATRON_DISMISSED_KEY);
+    setShowPatronModal(false);
+  }, []);
+
+  const handlePatronDismiss = useCallback(() => {
+    localStorage.setItem(PATRON_DISMISSED_KEY, "1");
+    setShowPatronModal(false);
+  }, []);
 
   const handleTimelapseComplete = useCallback(() => {
     sessionStorage.setItem("neurocompute_timelapse_seen", "1");
@@ -42,21 +123,24 @@ export default function Dashboard() {
     queryKey: ["/api/nodes"],
     refetchInterval: 10000,
   });
+
+  const statsQuery = useQuery<NetworkStats>({
+    queryKey: ["/api/network/stats"],
+    refetchInterval: 30000,
+  });
+
   const activeNodes = nodesQuery.data?.filter(n => n.status === "computing") ?? [];
   const isSpectator = hasWebGPU === false || (hasWebGPU === true && !node.nodeId);
 
+  const stats = statsQuery.data;
+
   useEffect(() => {
     const check = async () => {
-      if (!navigator.gpu) {
-        setHasWebGPU(false);
-        return;
-      }
+      if (!navigator.gpu) { setHasWebGPU(false); return; }
       try {
         const adapter = await navigator.gpu.requestAdapter();
         setHasWebGPU(!!adapter);
-      } catch {
-        setHasWebGPU(false);
-      }
+      } catch { setHasWebGPU(false); }
     };
     check();
   }, []);
@@ -85,11 +169,8 @@ export default function Dashboard() {
   useEffect(() => {
     if (node.progressText) {
       const match = node.progressText.match(/(\d+)%/);
-      if (match) {
-        setProgressPercent(parseInt(match[1]));
-      } else {
-        setProgressPercent((prev) => (prev >= 95 ? 95 : prev + 1));
-      }
+      if (match) setProgressPercent(parseInt(match[1]));
+      else setProgressPercent((prev) => (prev >= 95 ? 95 : prev + 1));
     } else {
       setProgressPercent(0);
     }
@@ -97,6 +178,8 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen p-3 md:p-6 lg:p-8 max-w-[1600px] mx-auto space-y-4 overflow-x-hidden">
+
+      {/* Header */}
       <header className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl md:text-3xl font-display font-bold text-gradient" data-testid="text-app-title">
@@ -106,7 +189,6 @@ export default function Dashboard() {
             AI World Builder
           </span>
         </div>
-
         <div className="flex items-center gap-2">
           <Link href="/reference">
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground" data-testid="link-reference">
@@ -128,6 +210,68 @@ export default function Dashboard() {
         </div>
       </header>
 
+      {/* Network Stats Bar */}
+      <div className="grid grid-cols-3 gap-2" data-testid="section-network-stats">
+        <div className="bg-secondary/40 border border-white/5 rounded-xl p-3 text-center">
+          <div className="text-xl md:text-2xl font-mono font-bold text-primary" data-testid="stat-active-agents">
+            {stats ? stats.activeAgents : activeNodes.length}
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">agents computing</div>
+        </div>
+        <div className="bg-secondary/40 border border-white/5 rounded-xl p-3 text-center">
+          <div className="text-xl md:text-2xl font-mono font-bold text-fuchsia-400" data-testid="stat-total-ops">
+            {stats ? formatOps(stats.totalTokens) : "—"}
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">total ops</div>
+        </div>
+        <div className="bg-secondary/40 border border-white/5 rounded-xl p-3 text-center">
+          <div className="text-xl md:text-2xl font-mono font-bold text-amber-400" data-testid="stat-patrons">
+            {stats ? stats.totalPatrons : "—"}
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">volunteers</div>
+        </div>
+      </div>
+
+      {/* Patron Identity Strip */}
+      {patronId ? (
+        <div className="flex items-center justify-between gap-2 px-3 py-2 bg-primary/5 border border-primary/15 rounded-lg" data-testid="section-patron-identity">
+          <div className="flex items-center gap-2 text-sm">
+            <Shield className="w-3.5 h-3.5 text-primary shrink-0" />
+            <span className="text-muted-foreground">Patron:</span>
+            <span className="font-semibold text-foreground" data-testid="text-patron-name">{patronName}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowTokenHint(v => !v)}
+              className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5 transition-colors"
+              data-testid="button-show-token-hint"
+            >
+              <Key className="w-3 h-3" />
+              Token
+              <ChevronDown className={`w-3 h-3 transition-transform ${showTokenHint ? "rotate-180" : ""}`} />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowPatronModal(true)}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-secondary/30 border border-dashed border-white/10 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
+          data-testid="button-claim-patron"
+        >
+          <Shield className="w-3.5 h-3.5" />
+          Claim your patron identity to track contributions across devices
+        </button>
+      )}
+
+      {showTokenHint && patronId && (
+        <div className="text-[10px] text-muted-foreground bg-secondary/30 border border-white/5 rounded-lg px-3 py-2 flex items-center gap-2" data-testid="section-token-hint">
+          <Key className="w-3 h-3 shrink-0" />
+          <span>Your token is saved in this browser. To access from another device, use <strong>Return as patron</strong> and paste your original token.</span>
+          <button onClick={() => setShowPatronModal(true)} className="text-primary hover:underline shrink-0">Open</button>
+        </div>
+      )}
+
+      {/* Compute Node Card */}
       {hasWebGPU === null ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
           <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
@@ -185,7 +329,6 @@ export default function Dashboard() {
                     </span>
                   </div>
                 )}
-
                 {(node.status === "offline" || node.status === "error") ? (
                   <Button size="sm" onClick={node.startCompute} data-testid="button-start-compute">
                     <Play className="mr-1.5 w-3.5 h-3.5" />
@@ -257,6 +400,7 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr,340px] gap-4">
         <div className="space-y-4">
           {showTimelapse ? (
@@ -299,38 +443,31 @@ export default function Dashboard() {
               </Card>
             </div>
           )}
-
           <Journal isSpectator={isSpectator} />
         </div>
       </div>
 
+      {/* Tabs */}
       <Tabs defaultValue="chat" className="w-full">
         <TabsList className="w-full flex-wrap h-auto gap-1" data-testid="tabs-cimc-rooms">
           <TabsTrigger value="chat" className="flex-1 min-w-[60px] text-xs" data-testid="tab-chat">
-            <MessageSquare className="w-3 h-3 mr-1" />
-            Chat
+            <MessageSquare className="w-3 h-3 mr-1" />Chat
           </TabsTrigger>
           <TabsTrigger value="room3" className="flex-1 min-w-[60px] text-xs" data-testid="tab-room-3">
-            <Swords className="w-3 h-3 mr-1" />
-            Bridge
+            <Swords className="w-3 h-3 mr-1" />Bridge
           </TabsTrigger>
           <TabsTrigger value="leaderboard" className="flex-1 min-w-[60px] text-xs" data-testid="tab-leaderboard">
-            <Users className="w-3 h-3 mr-1" />
-            Nodes
+            <Users className="w-3 h-3 mr-1" />Nodes
           </TabsTrigger>
           <TabsTrigger value="room2" className="flex-1 min-w-[60px] text-xs" data-testid="tab-room-2">
-            <Radio className="w-3 h-3 mr-1" />
-            Forum
+            <Radio className="w-3 h-3 mr-1" />Forum
           </TabsTrigger>
           <TabsTrigger value="room1" className="flex-1 min-w-[60px] text-xs" data-testid="tab-room-1">
-            <Monitor className="w-3 h-3 mr-1" />
-            Conf
+            <Monitor className="w-3 h-3 mr-1" />Conf
           </TabsTrigger>
         </TabsList>
         <TabsContent value="chat" className="mt-3">
-          <div className="h-[400px]">
-            <Chat />
-          </div>
+          <div className="h-[400px]"><Chat /></div>
         </TabsContent>
         <TabsContent value="room3" className="mt-3">
           <BridgeGame />
@@ -345,6 +482,14 @@ export default function Dashboard() {
           <CimcFeed roomId={1} roomLabel="Main Conference Room" />
         </TabsContent>
       </Tabs>
+
+      {/* Patron Modal */}
+      <PatronModal
+        open={showPatronModal}
+        onClaimed={handlePatronClaimed}
+        onLooked={handlePatronLooked}
+        onDismiss={handlePatronDismiss}
+      />
     </div>
   );
 }
