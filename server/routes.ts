@@ -1086,6 +1086,11 @@ export async function registerRoutes(
         }
         const existing = await storage.getWallAt(newX, newY);
         if (existing) return res.status(400).json({ message: "Target cell already has a wall" });
+        // Prevent moving wall into a cell occupied by any node
+        const occupyingNode = [...nodePositionCache.entries()].find(([, pos]) => pos.x === newX && pos.y === newY);
+        if (occupyingNode) {
+          return res.status(400).json({ message: "Cannot move wall into an occupied cell" });
+        }
         const updated = await storage.moveWall(wallId, newX, newY);
         broadcastAll(JSON.stringify({
           type: "wallMoved",
@@ -1313,13 +1318,14 @@ export async function registerRoutes(
             senderName: parsed.senderName,
             nodeId: null,
           });
+          // chatMessage is global: all nodes see the chat history (persistent record)
           broadcastAll(
             JSON.stringify({
               type: "chatMessage",
               payload: { id: saved.id, content: saved.content, senderName: saved.senderName, role: "user" },
             })
           );
-          // Spatially filter chatPending to nodes within range of the sender
+          // chatPending is spatial: only nearby agents receive the LLM prompt to respond
           const chatPendingMsg = JSON.stringify({
             type: "chatPending",
             payload: { content: parsed.content },

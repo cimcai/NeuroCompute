@@ -62,6 +62,8 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
   const [selectedPixel, setSelectedPixel] = useState<{ x: number; y: number } | null>(null);
   const [energyTransferTarget, setEnergyTransferTarget] = useState<{ nodeId: number; nodeName: string } | null>(null);
   const [transferAmount, setTransferAmount] = useState(1);
+  const [wallPushTarget, setWallPushTarget] = useState<{ wallId: number; wallX: number; wallY: number } | null>(null);
+  const [wallPushDirection, setWallPushDirection] = useState<"up" | "down" | "left" | "right">("up");
   const [zoomedRegion, setZoomedRegion] = useState<{ x: number; y: number } | null>(null);
   const [liveSubPixels, setLiveSubPixels] = useState<Map<string, { color: string; nodeName: string }>>(new Map());
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
@@ -86,6 +88,18 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
   });
 
   const [nodeCredits, setNodeCredits] = useState<Map<number, number>>(new Map());
+
+  const wallPushMutation = useMutation({
+    mutationFn: async ({ wallId, direction }: { wallId: number; direction: string }) => {
+      if (!nodeId) throw new Error("No node connected");
+      const nodeToken = localStorage.getItem(`neurocompute_nodeToken_${nodeId}`);
+      if (!nodeToken) throw new Error("Session token not found — reconnect to continue");
+      return apiRequest("POST", `/api/walls/${wallId}/push`, { nodeId, direction, nodeToken });
+    },
+    onSuccess: () => {
+      setWallPushTarget(null);
+    },
+  });
 
   const energyTransferMutation = useMutation({
     mutationFn: async ({ toNodeId, amount }: { toNodeId: number; amount: number }) => {
@@ -732,6 +746,24 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
             navigate(`/node/${clickedNodeId}`);
             return;
           }
+          // Check if clicked cell has a wall cardinally adjacent to my node
+          if (nodeId && myPos) {
+            let clickedWallId: number | null = null;
+            wallPositions.forEach((pos, wId) => {
+              if (pos.x === cell.x && pos.y === cell.y) clickedWallId = wId;
+            });
+            if (clickedWallId !== null) {
+              const wallDist = Math.abs(cell.x - myPos.x) + Math.abs(cell.y - myPos.y);
+              if (wallDist === 1) {
+                // Suggest push direction: opposite of from-node perspective
+                const suggestedDir = cell.x > myPos.x ? "right" : cell.x < myPos.x ? "left" : cell.y > myPos.y ? "down" : "up";
+                setWallPushTarget({ wallId: clickedWallId, wallX: cell.x, wallY: cell.y });
+                setWallPushDirection(suggestedDir);
+                return;
+              }
+            }
+          }
+
           if (selectedPixel && selectedPixel.x === cell.x && selectedPixel.y === cell.y) {
             setSelectedPixel(null);
           } else {
@@ -835,6 +867,45 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
             <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/70 backdrop-blur-sm rounded-full px-3 py-1.5 border border-white/10" data-testid="badge-spectating">
               <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
               <span className="text-[10px] font-mono text-muted-foreground">Spectating</span>
+            </div>
+          )}
+
+          {wallPushTarget && (
+            <div className="absolute top-2 right-2 w-60 bg-black/90 backdrop-blur-md rounded-lg border border-stone-400/30 overflow-hidden" data-testid="panel-wall-push">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-stone-400/20">
+                <span className="text-xs font-mono text-stone-300">▓ Push Wall ({wallPushTarget.wallX},{wallPushTarget.wallY})</span>
+                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setWallPushTarget(null)} data-testid="button-close-wall-push">
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+              <div className="px-3 py-3 space-y-3">
+                <p className="text-[10px] text-muted-foreground">Another agent must push same direction within 3 seconds to move this wall.</p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {(["up", "down", "left", "right"] as const).map(dir => (
+                    <Button
+                      key={dir}
+                      variant={wallPushDirection === dir ? "default" : "outline"}
+                      className="h-7 text-[11px] capitalize"
+                      onClick={() => setWallPushDirection(dir)}
+                      data-testid={`button-wall-push-dir-${dir}`}
+                    >{dir}</Button>
+                  ))}
+                </div>
+                <Button
+                  className="w-full h-7 text-xs bg-stone-600 hover:bg-stone-500 text-white font-semibold"
+                  onClick={() => wallPushMutation.mutate({ wallId: wallPushTarget.wallId, direction: wallPushDirection })}
+                  disabled={wallPushMutation.isPending}
+                  data-testid="button-wall-push-confirm"
+                >
+                  {wallPushMutation.isPending ? "Pushing…" : "Push Wall"}
+                </Button>
+                {wallPushMutation.isError && (
+                  <p className="text-[10px] text-red-400" data-testid="text-wall-push-error">{(wallPushMutation.error as Error)?.message}</p>
+                )}
+                {wallPushMutation.isSuccess && (
+                  <p className="text-[10px] text-green-400">Push registered! Waiting for second agent...</p>
+                )}
+              </div>
             </div>
           )}
 
