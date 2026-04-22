@@ -45,8 +45,10 @@ export async function registerRoutes(
   app.post(api.nodes.create.path, async (req, res) => {
     try {
       const input = api.nodes.create.input.parse(req.body);
-      const node = await storage.createNode(input);
-      res.status(201).json(node);
+      const sessionToken = randomBytes(20).toString("hex");
+      const sessionTokenHash = createHash("sha256").update(sessionToken).digest("hex");
+      const node = await storage.createNode({ ...input, sessionTokenHash });
+      res.status(201).json({ ...node, sessionToken });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({
@@ -135,14 +137,24 @@ export async function registerRoutes(
   app.post("/api/nodes/:id/link-patron", async (req, res) => {
     try {
       const nodeId = Number(req.params.id);
-      const { token } = req.body;
+      const { token, nodeToken } = req.body;
       if (!token || typeof token !== "string") {
         return res.status(400).json({ message: "Patron token is required" });
       }
-      const tokenHash = createHash("sha256").update(token.trim()).digest("hex");
-      const patron = await storage.getPatronByTokenHash(tokenHash);
+      if (!nodeToken || typeof nodeToken !== "string") {
+        return res.status(400).json({ message: "Node session token is required" });
+      }
+      // Verify patron token
+      const patronHash = createHash("sha256").update(token.trim()).digest("hex");
+      const patron = await storage.getPatronByTokenHash(patronHash);
       if (!patron) {
         return res.status(403).json({ message: "Invalid patron token" });
+      }
+      // Verify node session token (node ownership proof)
+      const nodeHash = createHash("sha256").update(nodeToken.trim()).digest("hex");
+      const nodeOwned = await storage.getNodeBySessionTokenHash(nodeHash, nodeId);
+      if (!nodeOwned) {
+        return res.status(403).json({ message: "Invalid node session token" });
       }
       const node = await storage.linkNodeToPatron(nodeId, patron.id);
       res.json(node);

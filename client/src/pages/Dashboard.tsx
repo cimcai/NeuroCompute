@@ -66,15 +66,16 @@ export default function Dashboard() {
     }
   }, [patronId]);
 
-  // Link node to patron when node is created (uses stored token for server-side verification)
+  // Link node to patron when node is created (uses stored tokens for server-side verification)
   useEffect(() => {
     if (node.nodeId && patronId) {
       const storedToken = localStorage.getItem(PATRON_TOKEN_KEY);
-      if (!storedToken) return;
+      const nodeToken = localStorage.getItem(`neurocompute_nodeToken_${node.nodeId}`);
+      if (!storedToken || !nodeToken) return;
       fetch(`/api/nodes/${node.nodeId}/link-patron`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: storedToken }),
+        body: JSON.stringify({ token: storedToken, nodeToken }),
       }).catch(() => {});
     }
   }, [node.nodeId, patronId]);
@@ -89,11 +90,14 @@ export default function Dashboard() {
     setShowPatronModal(false);
     // Link existing node if any
     if (node.nodeId) {
-      fetch(`/api/nodes/${node.nodeId}/link-patron`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
-      }).catch(() => {});
+      const nodeToken = localStorage.getItem(`neurocompute_nodeToken_${node.nodeId}`);
+      if (nodeToken) {
+        fetch(`/api/nodes/${node.nodeId}/link-patron`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, nodeToken }),
+        }).catch(() => {});
+      }
     }
   }, [node.nodeId]);
 
@@ -107,11 +111,14 @@ export default function Dashboard() {
     setShowPatronModal(false);
     // Link existing node if any
     if (node.nodeId) {
-      fetch(`/api/nodes/${node.nodeId}/link-patron`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
-      }).catch(() => {});
+      const nodeToken = localStorage.getItem(`neurocompute_nodeToken_${node.nodeId}`);
+      if (nodeToken) {
+        fetch(`/api/nodes/${node.nodeId}/link-patron`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, nodeToken }),
+        }).catch(() => {});
+      }
     }
   }, [node.nodeId]);
 

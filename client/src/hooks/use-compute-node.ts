@@ -857,6 +857,11 @@ SUB: x,y #hexcolor`;
         currentName = displayName || newNode.name;
         setNodeId(newNode.id);
         setNodeName(newNode.name);
+        // Store per-node session token for patron linking proof of ownership
+        const rawNode = newNode as typeof newNode & { sessionToken?: string };
+        if (rawNode.sessionToken) {
+          localStorage.setItem(`neurocompute_nodeToken_${newNode.id}`, rawNode.sessionToken);
+        }
 
         if (displayName) {
           try {

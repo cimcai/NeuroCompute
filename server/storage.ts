@@ -48,6 +48,7 @@ export interface IStorage {
   createPatron(name: string, tokenHash: string): Promise<Patron>;
   getPatronByTokenHash(hash: string): Promise<Patron | undefined>;
   getPatronById(id: number): Promise<Patron | undefined>;
+  getNodeBySessionTokenHash(hash: string, nodeId: number): Promise<Node | undefined>;
   linkNodeToPatron(nodeId: number, patronId: number): Promise<Node>;
   getPatronLeaderboard(period?: 'all' | '7d' | '24h'): Promise<PatronLeaderboardEntry[]>;
   getNetworkStats(): Promise<{ activeAgents: number; totalTokens: number; totalPatrons: number }>;
@@ -325,6 +326,14 @@ export class DatabaseStorage implements IStorage {
   async getPatronById(id: number): Promise<Patron | undefined> {
     const [patron] = await db.select().from(patrons).where(eq(patrons.id, id));
     return patron;
+  }
+
+  async getNodeBySessionTokenHash(hash: string, nodeId: number): Promise<Node | undefined> {
+    const [node] = await db
+      .select()
+      .from(nodes)
+      .where(and(eq(nodes.id, nodeId), eq(nodes.sessionTokenHash, hash)));
+    return node;
   }
 
   async linkNodeToPatron(nodeId: number, patronId: number): Promise<Node> {
