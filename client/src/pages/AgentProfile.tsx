@@ -3,7 +3,7 @@ import { useParams, Link } from "wouter";
 import { useState, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Zap, Layers, MapPin, Clock, Target, Radio, ChevronDown } from "lucide-react";
+import { ArrowLeft, Zap, Layers, MapPin, Clock, Target, Radio, ChevronDown, Trophy } from "lucide-react";
 
 interface JournalEntry {
   id: number;
@@ -23,6 +23,7 @@ interface NodeProfile {
   pixelY: number;
   avatar: string | null;
   goalDescription: string | null;
+  goalsAchieved: number;
   lastSeen: string;
   journal: JournalEntry[];
   hasMore: boolean;
@@ -197,7 +198,7 @@ export default function AgentProfile() {
           </Card>
 
           {/* Stats row */}
-          <div className="grid grid-cols-3 gap-3" data-testid="section-agent-stats">
+          <div className="grid grid-cols-2 gap-3" data-testid="section-agent-stats">
             <Card className="border-white/5 bg-secondary/40">
               <CardContent className="p-3 text-center">
                 <div className="flex items-center justify-center gap-1 mb-0.5">
@@ -229,6 +230,17 @@ export default function AgentProfile() {
                   {profile.pixelCredits}
                 </div>
                 <div className="text-[10px] text-muted-foreground">credits left</div>
+              </CardContent>
+            </Card>
+            <Card className="border-white/5 bg-secondary/40">
+              <CardContent className="p-3 text-center">
+                <div className="flex items-center justify-center gap-1 mb-0.5">
+                  <Trophy className="w-3 h-3 text-green-400" />
+                </div>
+                <div className="text-lg font-mono font-bold text-green-400" data-testid="stat-goals-achieved">
+                  {profile.goalsAchieved}
+                </div>
+                <div className="text-[10px] text-muted-foreground">goals achieved</div>
               </CardContent>
             </Card>
           </div>

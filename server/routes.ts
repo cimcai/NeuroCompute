@@ -930,6 +930,13 @@ export async function registerRoutes(
       if (node.pixelGoal) {
         try { goalDescription = JSON.parse(node.pixelGoal).description ?? null; } catch {}
       }
+      let goalsAchieved = 0;
+      if (node.memory) {
+        try {
+          const memEvents: { type: string; content: string; ts: number }[] = JSON.parse(node.memory);
+          goalsAchieved = memEvents.filter(e => e.type === "pixelGoalSet").length;
+        } catch {}
+      }
       res.json({
         id: node.id,
         name: node.name,
@@ -942,6 +949,7 @@ export async function registerRoutes(
         pixelY: node.pixelY,
         avatar: node.avatar,
         goalDescription,
+        goalsAchieved,
         lastSeen: node.lastSeen.toISOString(),
         journal: recentJournal.map(e => ({
           id: e.id,
