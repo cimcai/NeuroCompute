@@ -1114,8 +1114,14 @@ export async function registerRoutes(
     try {
       const fromNodeId = Number(req.params.id);
       const { toNodeId, amount, nodeToken } = req.body;
-      if (!toNodeId || !amount || amount < 1) {
-        return res.status(400).json({ message: "toNodeId and amount (>=1) required" });
+      const parsedToNodeId = Number(toNodeId);
+      const parsedAmount = Math.floor(Number(amount));
+      if (!parsedToNodeId || isNaN(parsedAmount) || parsedAmount < 1) {
+        return res.status(400).json({ message: "toNodeId and amount (integer >= 1) required" });
+      }
+      // Prevent self-transfer (energy minting exploit)
+      if (fromNodeId === parsedToNodeId) {
+        return res.status(400).json({ message: "Cannot transfer energy to yourself" });
       }
       if (!nodeToken || typeof nodeToken !== "string") {
         return res.status(400).json({ message: "nodeToken required for authorization" });
@@ -1130,18 +1136,18 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Invalid node session token" });
       }
       const from = await storage.getNode(fromNodeId);
-      const to = await storage.getNode(Number(toNodeId));
+      const to = await storage.getNode(parsedToNodeId);
       if (!from || !to) return res.status(404).json({ message: "Node not found" });
-      // Cardinal adjacency only (no diagonals)
+      // Strict cardinal adjacency: exactly 1 step away, no diagonals, not same cell
       const adjDx = Math.abs(from.pixelX - to.pixelX);
       const adjDy = Math.abs(from.pixelY - to.pixelY);
-      if (adjDx + adjDy > 1) {
-        return res.status(400).json({ message: "Nodes must be cardinally adjacent to transfer energy" });
+      if (adjDx + adjDy !== 1) {
+        return res.status(400).json({ message: "Nodes must be cardinally adjacent (exactly 1 step) to transfer energy" });
       }
-      const { from: updatedFrom, to: updatedTo } = await storage.transferEnergy(fromNodeId, Number(toNodeId), Number(amount));
+      const { from: updatedFrom, to: updatedTo } = await storage.transferEnergy(fromNodeId, parsedToNodeId, parsedAmount);
       broadcastAll(JSON.stringify({
         type: "energyTransferred",
-        payload: { fromNodeId, toNodeId: Number(toNodeId), amount: Number(amount), fromCredits: updatedFrom.pixelCredits, toCredits: updatedTo.pixelCredits },
+        payload: { fromNodeId, toNodeId: parsedToNodeId, amount: parsedAmount, fromCredits: updatedFrom.pixelCredits, toCredits: updatedTo.pixelCredits },
       }));
       res.json({ from: sanitizeNode(updatedFrom), to: sanitizeNode(updatedTo) });
     } catch (err: any) {

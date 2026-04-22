@@ -599,26 +599,10 @@ async function runPixelAgent(config: OrchestratorConfig) {
           const newX = Math.max(0, Math.min(31, node.pixelX + dx * steps));
           const newY = Math.max(0, Math.min(31, node.pixelY + dy * steps));
 
-          // Check for wall at destination; if blocked, attempt solo wall push
-          const destWallKey = `${newX},${newY}`;
-          if (wallSet.has(destWallKey)) {
-            const wallsData = await storage.getWalls();
-            const blockedWall = wallsData.find(w => w.x === newX && w.y === newY);
-            if (blockedWall && node.pixelCredits >= 1) {
-              // Attempt solo push in movement direction
-              const pushX = Math.max(0, Math.min(31, newX + dx));
-              const pushY = Math.max(0, Math.min(31, newY + dy));
-              if (!wallSet.has(`${pushX},${pushY}`) && (pushX !== newX || pushY !== newY)) {
-                const movedWall = await storage.moveWall(blockedWall.id, pushX, pushY);
-                wallSet.delete(destWallKey);
-                wallSet.add(`${pushX},${pushY}`);
-                config.broadcastAll(JSON.stringify({
-                  type: "wallMoved",
-                  payload: { id: movedWall.id, fromX: newX, fromY: newY, toX: pushX, toY: pushY },
-                }));
-                console.log(`[orchestrator] ${nodeName} solo-pushed wall ${blockedWall.id} from (${newX},${newY}) to (${pushX},${pushY})`);
-              }
-            }
+          // Check for wall at destination — walls require two cooperating agents (see /api/walls/:id/push)
+          // Orchestrator agents must route around walls, not push them solo
+          if (wallSet.has(`${newX},${newY}`)) {
+            // Path blocked; agent stays in place this tick
           } else if (newX !== node.pixelX || newY !== node.pixelY) {
             await storage.moveNode(node.id, newX, newY);
             await storage.deductMoveCredit(node.id, steps);
