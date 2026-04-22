@@ -29,7 +29,7 @@ export const api = {
       path: "/api/nodes" as const,
       input: insertNodeSchema,
       responses: {
-        201: z.custom<typeof nodes.$inferSelect>(),
+        201: z.custom<Omit<typeof nodes.$inferSelect, 'sessionTokenHash'> & { sessionToken: string }>(),
         400: errorSchemas.validation,
       },
     },

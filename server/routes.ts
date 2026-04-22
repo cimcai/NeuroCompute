@@ -13,6 +13,12 @@ import { runDailyReport, buildReport, renderEmailHtml, buildAnalyticsData, rende
 let pixelHistoryCache: any[] = [];
 let pixelCacheTotal = 0;
 
+// Strip sessionTokenHash before sending node data to clients
+function sanitizeNode<T extends { sessionTokenHash?: string | null }>(node: T): Omit<T, 'sessionTokenHash'> {
+  const { sessionTokenHash: _, ...rest } = node;
+  return rest as Omit<T, 'sessionTokenHash'>;
+}
+
 export async function fetchAndCacheHistory(): Promise<any[]> {
   const response = await fetch("https://cimc.io/api/canvas/history/all");
   if (!response.ok) throw new Error(`CIMC history/all failed: ${response.status}`);
@@ -31,7 +37,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   app.get(api.nodes.list.path, async (req, res) => {
     const nodes = await storage.getNodes();
-    res.json(nodes);
+    res.json(nodes.map(sanitizeNode));
   });
 
   app.get(api.nodes.get.path, async (req, res) => {
@@ -39,7 +45,7 @@ export async function registerRoutes(
     if (!node) {
       return res.status(404).json({ message: "Node not found" });
     }
-    res.json(node);
+    res.json(sanitizeNode(node));
   });
 
   app.post(api.nodes.create.path, async (req, res) => {
@@ -48,7 +54,7 @@ export async function registerRoutes(
       const sessionToken = randomBytes(20).toString("hex");
       const sessionTokenHash = createHash("sha256").update(sessionToken).digest("hex");
       const node = await storage.createNode({ ...input, sessionTokenHash });
-      res.status(201).json({ ...node, sessionToken });
+      res.status(201).json({ ...sanitizeNode(node), sessionToken });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({
@@ -68,7 +74,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid status" });
       }
       const node = await storage.updateNodeStatus(id, status);
-      res.json(node);
+      res.json(sanitizeNode(node));
     } catch (err) {
       logger.error("api", "Status update error", err);
       res.status(500).json({ message: "Failed to update status" });
@@ -81,14 +87,14 @@ export async function registerRoutes(
       const { displayName } = req.body;
       if (displayName === null || displayName === undefined || (typeof displayName === "string" && displayName.trim().length === 0)) {
         const node = await storage.updateNodeDisplayName(id, null);
-        return res.json(node);
+        return res.json(sanitizeNode(node));
       }
       if (typeof displayName !== "string") {
         return res.status(400).json({ message: "Display name must be a string" });
       }
       const trimmed = displayName.trim().slice(0, 32);
       const node = await storage.updateNodeDisplayName(id, trimmed);
-      res.json(node);
+      res.json(sanitizeNode(node));
     } catch (err) {
       logger.error("api", "Display name update error", err);
       res.status(500).json({ message: "Failed to update display name" });
@@ -157,7 +163,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Invalid node session token" });
       }
       const node = await storage.linkNodeToPatron(nodeId, patron.id);
-      res.json(node);
+      res.json(sanitizeNode(node));
     } catch (err: any) {
       if (err.message === "Node not found") return res.status(404).json({ message: "Node not found" });
       logger.error("api", "Link patron error", err);
@@ -772,7 +778,7 @@ export async function registerRoutes(
         type: "pixelPlaced",
         payload: { x, y, color, agent: agentName, nodeId: node.id, pixelCredits: node.pixelCredits },
       }));
-      res.json({ pixel: result, node });
+      res.json({ pixel: result, node: sanitizeNode(node) });
     } catch (err: any) {
       console.error("Canvas place error:", err);
       if (err.message === "Not enough pixel credits") {
@@ -808,7 +814,7 @@ export async function registerRoutes(
         type: "nodeMoved",
         payload: { nodeId: updated.id, nodeName: updated.name, x: updated.pixelX, y: updated.pixelY },
       }));
-      res.json({ node: updated });
+      res.json({ node: sanitizeNode(updated) });
     } catch (err: any) {
       console.error("Canvas move error:", err);
       res.status(500).json({ message: "Failed to move node" });
