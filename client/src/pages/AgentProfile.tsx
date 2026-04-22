@@ -1,8 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
+import { useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Zap, Layers, MapPin, Clock, Target, Radio } from "lucide-react";
+import { ArrowLeft, Zap, Layers, MapPin, Clock, Target, Radio, ChevronDown } from "lucide-react";
+
+interface JournalEntry {
+  id: number;
+  content: string;
+  createdAt: string;
+}
 
 interface NodeProfile {
   id: number;
@@ -17,7 +24,10 @@ interface NodeProfile {
   avatar: string | null;
   goalDescription: string | null;
   lastSeen: string;
-  journal: { id: number; content: string; createdAt: string }[];
+  journal: JournalEntry[];
+  hasMore: boolean;
+  offset: number;
+  limit: number;
 }
 
 function AvatarGrid({ avatar }: { avatar: string }) {
@@ -61,10 +71,13 @@ function formatNumber(n: number): string {
 export default function AgentProfile() {
   const params = useParams<{ id: string }>();
   const nodeId = Number(params.id);
+  const [journalOffset, setJournalOffset] = useState(0);
+  const [allJournal, setAllJournal] = useState<JournalEntry[]>([]);
+  const LIMIT = 20;
 
   const { data: profile, isLoading, isError } = useQuery<NodeProfile>({
     queryKey: ["/api/nodes", nodeId, "profile"],
-    queryFn: () => fetch(`/api/nodes/${nodeId}/profile`).then(r => {
+    queryFn: () => fetch(`/api/nodes/${nodeId}/profile?limit=${LIMIT}&offset=0`).then(r => {
       if (!r.ok) throw new Error("Not found");
       return r.json();
     }),
@@ -72,7 +85,35 @@ export default function AgentProfile() {
     refetchInterval: 15000,
   });
 
+  const { data: morePage, isFetching: loadingMore, refetch: fetchMore } = useQuery<NodeProfile>({
+    queryKey: ["/api/nodes", nodeId, "profile", "page", journalOffset],
+    queryFn: () => fetch(`/api/nodes/${nodeId}/profile?limit=${LIMIT}&offset=${journalOffset}`).then(r => r.json()),
+    enabled: false,
+  });
+
+  const handleLoadMore = useCallback(async () => {
+    const nextOffset = (allJournal.length > 0 ? allJournal.length : profile?.journal.length ?? 0);
+    setJournalOffset(nextOffset);
+    const result = await fetchMore();
+    if (result.data) {
+      const incoming = result.data.journal;
+      setAllJournal(prev => {
+        const existing = new Set(prev.map(e => e.id));
+        const deduped = incoming.filter(e => !existing.has(e.id));
+        return [...prev, ...deduped];
+      });
+    }
+  }, [allJournal.length, profile?.journal.length, fetchMore]);
+
   const displayName = profile?.displayName || profile?.name || "Unknown";
+
+  const baseJournal = profile?.journal ?? [];
+  const combinedJournal = allJournal.length > 0
+    ? [...baseJournal, ...allJournal.filter(e => !baseJournal.find(b => b.id === e.id))]
+    : baseJournal;
+  const canLoadMore = allJournal.length > 0
+    ? (morePage?.hasMore ?? false)
+    : (profile?.hasMore ?? false);
 
   return (
     <div className="min-h-screen p-4 md:p-8 max-w-2xl mx-auto space-y-6">
@@ -210,29 +251,46 @@ export default function AgentProfile() {
           <Card className="border-white/5" data-testid="card-journal">
             <CardHeader className="px-4 py-3 border-b border-white/5">
               <CardTitle className="text-sm font-mono text-muted-foreground">
-                Journal ({profile.journal.length} entries)
+                Journal ({combinedJournal.length} entries{canLoadMore ? "+" : ""})
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              {profile.journal.length === 0 ? (
+              {combinedJournal.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-6" data-testid="text-journal-empty">
                   No journal entries yet.
                 </p>
               ) : (
-                <div className="divide-y divide-white/5 max-h-[480px] overflow-y-auto">
-                  {[...profile.journal].reverse().map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="px-4 py-2.5 flex items-start gap-2"
-                      data-testid={`journal-entry-${entry.id}`}
-                    >
-                      <span className="text-[10px] text-muted-foreground font-mono shrink-0 mt-0.5 w-12">
-                        {formatTimeAgo(entry.createdAt)}
-                      </span>
-                      <p className="text-xs text-foreground/80 leading-relaxed">{entry.content}</p>
+                <>
+                  <div className="divide-y divide-white/5 max-h-[480px] overflow-y-auto">
+                    {[...combinedJournal].reverse().map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="px-4 py-2.5 flex items-start gap-2"
+                        data-testid={`journal-entry-${entry.id}`}
+                      >
+                        <span className="text-[10px] text-muted-foreground font-mono shrink-0 mt-0.5 w-12">
+                          {formatTimeAgo(entry.createdAt)}
+                        </span>
+                        <p className="text-xs text-foreground/80 leading-relaxed">{entry.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {canLoadMore && (
+                    <div className="p-3 border-t border-white/5 flex justify-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleLoadMore}
+                        disabled={loadingMore}
+                        data-testid="button-load-more-journal"
+                        className="text-xs text-muted-foreground hover:text-foreground gap-1"
+                      >
+                        <ChevronDown className="w-3.5 h-3.5" />
+                        {loadingMore ? "Loading..." : "Load older entries"}
+                      </Button>
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>

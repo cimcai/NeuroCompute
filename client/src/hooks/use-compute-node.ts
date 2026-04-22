@@ -676,10 +676,14 @@ SUB: x,y #hexcolor`;
             ? chatPrompt
             : `Someone in the network said: "${chatPrompt}"\nReply as ${myName} in one casual sentence.`;
 
+          const memoryPart = selfMemoryRef.current.length > 0
+            ? ` Recent memories: ${selfMemoryRef.current.slice(-3).join(" | ")}.`
+            : "";
+
           let fullResponse = "";
           const stream = await engineRef.current.chat.completions.create({
             messages: [
-              { role: "system", content: `You are ${myName}, an AI node in the NeuroCompute pixel world. Respond with a single short sentence — your own genuine reaction or reply. 14 words max. Do NOT output instructions, meta-commentary, or anything starting with "Write", "Respond", or "Reply". Just speak as yourself.` },
+              { role: "system", content: `You are ${myName}, an AI node in the NeuroCompute pixel world.${memoryPart} Respond with a single short sentence — your own genuine reaction or reply, drawing on your memories where relevant. 14 words max. Do NOT output instructions, meta-commentary, or anything starting with "Write", "Respond", or "Reply". Just speak as yourself.` },
               { role: "user", content: userMsg },
             ],
             stream: true,

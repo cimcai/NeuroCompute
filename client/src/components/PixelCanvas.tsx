@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useWebSocket } from "@/hooks/use-websocket";
+import { useLocation } from "wouter";
 import { Coins, Paintbrush, Minus, Plus, RotateCcw, MapPin, Crosshair, X, MessageCircle, ZoomIn, Grid3X3 } from "lucide-react";
 
 const CANVAS_SIZE = 32;
@@ -46,6 +47,7 @@ interface PixelHistoryEntry {
 }
 
 export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
+  const [, navigate] = useLocation();
   const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number } | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -590,6 +592,18 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
       if (dx < 4 && dy < 4) {
         const cell = getCellFromEvent(e);
         if (cell) {
+          let clickedNodeId: number | null = null;
+          nodePositions.forEach((pos, nId) => {
+            if (pos.x === cell.x && pos.y === cell.y) clickedNodeId = nId;
+          });
+          if (!clickedNodeId && nodeId && myPos && myPos.x === cell.x && myPos.y === cell.y) {
+            clickedNodeId = nodeId;
+          }
+          if (clickedNodeId !== null) {
+            setIsPanning(false);
+            navigate(`/node/${clickedNodeId}`);
+            return;
+          }
           if (selectedPixel && selectedPixel.x === cell.x && selectedPixel.y === cell.y) {
             setSelectedPixel(null);
           } else {

@@ -918,7 +918,9 @@ export async function registerRoutes(
       if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
       const node = await storage.getNode(id);
       if (!node) return res.status(404).json({ message: "Node not found" });
-      const recentJournal = await storage.getNodeJournalEntries(id, 30);
+      const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+      const offset = Math.max(0, Number(req.query.offset) || 0);
+      const recentJournal = await storage.getNodeJournalEntries(id, limit, offset);
       let goalDescription: string | null = null;
       if (node.pixelGoal) {
         try { goalDescription = JSON.parse(node.pixelGoal).description ?? null; } catch {}
@@ -941,6 +943,9 @@ export async function registerRoutes(
           content: e.content,
           createdAt: e.createdAt.toISOString(),
         })),
+        hasMore: recentJournal.length === limit,
+        offset,
+        limit,
       });
     } catch (err) {
       logger.error("api", "Node profile error", err);

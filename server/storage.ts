@@ -54,7 +54,7 @@ export interface IStorage {
   getNetworkStats(): Promise<{ activeAgents: number; totalTokens: number; totalPatrons: number }>;
   updateNodeMemory(id: number, memory: string): Promise<Node>;
   appendNodeMemoryEvent(id: number, event: { type: string; content: string; ts: number }): Promise<void>;
-  getNodeJournalEntries(nodeId: number, limit?: number): Promise<JournalEntry[]>;
+  getNodeJournalEntries(nodeId: number, limit?: number, offset?: number): Promise<JournalEntry[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -424,13 +424,14 @@ export class DatabaseStorage implements IStorage {
     await this.updateNodeMemory(id, JSON.stringify(events));
   }
 
-  async getNodeJournalEntries(nodeId: number, limit = 30): Promise<JournalEntry[]> {
+  async getNodeJournalEntries(nodeId: number, limit = 20, offset = 0): Promise<JournalEntry[]> {
     const entries = await db
       .select()
       .from(journalEntries)
       .where(eq(journalEntries.nodeId, nodeId))
       .orderBy(desc(journalEntries.createdAt))
-      .limit(limit);
+      .limit(limit)
+      .offset(offset);
     return entries.reverse();
   }
 }
