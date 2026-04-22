@@ -774,6 +774,11 @@ export async function registerRoutes(
       if (!currentNode) return res.status(404).json({ message: "Node not found" });
       const x = currentNode.pixelX;
       const y = currentNode.pixelY;
+      // Check wall at current node position
+      const wallAtPlace = await storage.getWallAt(x, y);
+      if (wallAtPlace) {
+        return res.status(400).json({ message: "Cannot place pixel — this cell is blocked by a wall. Move first!" });
+      }
       const node = await storage.spendPixelCredit(Number(nodeId));
       const agentName = currentNode.displayName || node.name;
       const result = await cimc.placePixel(x, y, color, `NeuroCompute-${agentName}`);
@@ -814,10 +819,20 @@ export async function registerRoutes(
       }
       const dx = Math.abs(nx - node.pixelX);
       const dy = Math.abs(ny - node.pixelY);
-      if (dx > 1 || dy > 1) {
-        return res.status(400).json({ message: "Can only move to adjacent cells (1 step)" });
+      if (dx + dy > 1) {
+        return res.status(400).json({ message: "Can only move to cardinally adjacent cells (1 step)" });
       }
-      const updated = await storage.moveNode(Number(nodeId), Number(x), Number(y));
+      // Gate movement on available credits
+      if (node.pixelCredits < 1) {
+        return res.status(403).json({ message: "Not enough energy to move. Contribute compute tokens to earn credits!" });
+      }
+      // Check wall occupancy at target
+      const wallAtTarget = await storage.getWallAt(nx, ny);
+      if (wallAtTarget) {
+        return res.status(400).json({ message: "Target cell is blocked by a wall" });
+      }
+      const updated = await storage.moveNode(Number(nodeId), nx, ny);
+      await storage.deductMoveCredit(Number(nodeId));
       broadcastAll(JSON.stringify({
         type: "nodeMoved",
         payload: { nodeId: updated.id, nodeName: updated.name, x: updated.pixelX, y: updated.pixelY },

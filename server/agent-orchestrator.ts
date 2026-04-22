@@ -14,6 +14,8 @@ interface OrchestratorConfig {
 }
 
 const SPATIAL_CHAT_RADIUS = 8;
+const SPATIAL_OBSERVATION_RADIUS = 12;
+const SPATIAL_GOAL_RADIUS = 16;
 
 const CHAT_INTERVAL_MS = 90_000;
 const CONVO_INTERVAL_MS = 45_000;
@@ -538,7 +540,8 @@ async function runPixelAgent(config: OrchestratorConfig) {
               setAt: Date.now(),
             };
             await storage.updateNodeGoal(node.id, JSON.stringify(fallbackGoal));
-            config.broadcastAll(
+            config.broadcastNearby(
+              node.pixelX, node.pixelY, SPATIAL_GOAL_RADIUS,
               JSON.stringify({
                 type: "nodeGoalSet",
                 payload: { nodeId: node.id, nodeName, description: fallbackGoal.description, targetX: fallbackGoal.targetX, targetY: fallbackGoal.targetY, color: fallbackGoal.color },

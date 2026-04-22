@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useLocation } from "wouter";
-import { Coins, Paintbrush, Minus, Plus, RotateCcw, MapPin, Crosshair, X, MessageCircle, ZoomIn, Grid3X3 } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Coins, Paintbrush, Minus, Plus, RotateCcw, MapPin, Crosshair, X, MessageCircle, ZoomIn, Grid3X3, Zap } from "lucide-react";
 
 const CANVAS_SIZE = 32;
 const CELL_SIZE = 16;
@@ -59,6 +60,8 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
   const [nodeAvatars, setNodeAvatars] = useState<Map<number, AvatarGrid>>(new Map());
   const [following, setFollowing] = useState(autoFollow);
   const [selectedPixel, setSelectedPixel] = useState<{ x: number; y: number } | null>(null);
+  const [energyTransferTarget, setEnergyTransferTarget] = useState<{ nodeId: number; nodeName: string } | null>(null);
+  const [transferAmount, setTransferAmount] = useState(1);
   const [zoomedRegion, setZoomedRegion] = useState<{ x: number; y: number } | null>(null);
   const [liveSubPixels, setLiveSubPixels] = useState<Map<string, { color: string; nodeName: string }>>(new Map());
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
@@ -83,6 +86,20 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
   });
 
   const [nodeCredits, setNodeCredits] = useState<Map<number, number>>(new Map());
+
+  const energyTransferMutation = useMutation({
+    mutationFn: async ({ toNodeId, amount }: { toNodeId: number; amount: number }) => {
+      if (!nodeId) throw new Error("No node connected");
+      const nodeToken = localStorage.getItem(`neurocompute_nodeToken_${nodeId}`);
+      if (!nodeToken) throw new Error("Session token not found — reconnect to continue");
+      return apiRequest("POST", `/api/nodes/${nodeId}/transfer-energy`, { toNodeId, amount, nodeToken });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/nodes"] });
+      setEnergyTransferTarget(null);
+      setTransferAmount(1);
+    },
+  });
 
   const nodesQuery = useQuery<{ id: number; name: string; displayName: string | null; pixelX: number; pixelY: number; pixelGoal: string | null; avatar: string | null; status: string; pixelCredits?: number }[]>({
     queryKey: ["/api/nodes"],
@@ -700,6 +717,18 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
           }
           if (clickedNodeId !== null) {
             setIsPanning(false);
+            // If the clicked node is cardinally adjacent to my node, offer energy transfer
+            if (nodeId && myPos && clickedNodeId !== nodeId) {
+              const pos = nodePositions.get(clickedNodeId);
+              if (pos) {
+                const dist = Math.abs(pos.x - myPos.x) + Math.abs(pos.y - myPos.y);
+                if (dist === 1) {
+                  setEnergyTransferTarget({ nodeId: clickedNodeId, nodeName: pos.name });
+                  setTransferAmount(1);
+                  return;
+                }
+              }
+            }
             navigate(`/node/${clickedNodeId}`);
             return;
           }
@@ -809,7 +838,44 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
             </div>
           )}
 
-          {selectedPixel && !zoomedRegion && (
+          {energyTransferTarget && (
+            <div className="absolute top-2 right-2 w-60 bg-black/90 backdrop-blur-md rounded-lg border border-yellow-400/30 overflow-hidden" data-testid="panel-energy-transfer">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-yellow-400/20">
+                <div className="flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-yellow-400" />
+                  <span className="text-xs font-mono text-yellow-300">Give Energy</span>
+                </div>
+                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setEnergyTransferTarget(null)} data-testid="button-close-energy-transfer">
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+              <div className="px-3 py-3 space-y-3">
+                <p className="text-[10px] text-muted-foreground">Transfer ⚡ to <span className="text-yellow-300 font-semibold">{energyTransferTarget.nodeName}</span></p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="icon" className="h-6 w-6 shrink-0" onClick={() => setTransferAmount(a => Math.max(1, a - 1))} data-testid="button-transfer-amount-minus">
+                    <Minus className="w-3 h-3" />
+                  </Button>
+                  <span className="text-sm font-mono text-yellow-300 flex-1 text-center" data-testid="text-transfer-amount">⚡ {transferAmount}</span>
+                  <Button variant="outline" size="icon" className="h-6 w-6 shrink-0" onClick={() => setTransferAmount(a => Math.min(credits ?? 10, a + 1))} data-testid="button-transfer-amount-plus">
+                    <Plus className="w-3 h-3" />
+                  </Button>
+                </div>
+                <Button
+                  className="w-full h-7 text-xs bg-yellow-600 hover:bg-yellow-500 text-black font-semibold"
+                  onClick={() => energyTransferMutation.mutate({ toNodeId: energyTransferTarget.nodeId, amount: transferAmount })}
+                  disabled={energyTransferMutation.isPending || !transferAmount}
+                  data-testid="button-transfer-energy-confirm"
+                >
+                  {energyTransferMutation.isPending ? "Transferring…" : "Confirm Transfer"}
+                </Button>
+                {energyTransferMutation.isError && (
+                  <p className="text-[10px] text-red-400" data-testid="text-transfer-error">{(energyTransferMutation.error as Error)?.message}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {selectedPixel && !zoomedRegion && !energyTransferTarget && (
             <div className="absolute top-2 right-2 w-64 max-h-[60%] bg-black/85 backdrop-blur-md rounded-lg border border-white/10 overflow-hidden flex flex-col" data-testid="panel-pixel-history">
               <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 shrink-0">
                 <div className="flex items-center gap-2">
