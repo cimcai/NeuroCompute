@@ -55,7 +55,7 @@ export interface IStorage {
   updateNodeMemory(id: number, memory: string): Promise<Node>;
   appendNodeMemoryEvent(id: number, event: { type: string; content: string; ts: number }): Promise<void>;
   getNodeJournalEntries(nodeId: number, limit?: number, offset?: number): Promise<JournalEntry[]>;
-  deductMoveCredit(id: number): Promise<void>;
+  deductMoveCredit(id: number, amount?: number): Promise<void>;
   getWalls(): Promise<Wall[]>;
   getWallAt(x: number, y: number): Promise<Wall | undefined>;
   createWall(data: InsertWall): Promise<Wall>;
@@ -442,8 +442,8 @@ export class DatabaseStorage implements IStorage {
     return entries.reverse();
   }
 
-  async deductMoveCredit(id: number): Promise<void> {
-    await db.update(nodes).set({ pixelCredits: sql`GREATEST(0, pixel_credits - 1)` }).where(eq(nodes.id, id));
+  async deductMoveCredit(id: number, amount = 1): Promise<void> {
+    await db.update(nodes).set({ pixelCredits: sql`GREATEST(0, pixel_credits - ${amount})` }).where(eq(nodes.id, id));
   }
 
   async getWalls(): Promise<Wall[]> {

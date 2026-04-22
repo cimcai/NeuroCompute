@@ -82,7 +82,9 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
     refetchInterval: 15000,
   });
 
-  const nodesQuery = useQuery<{ id: number; name: string; displayName: string | null; pixelX: number; pixelY: number; pixelGoal: string | null; avatar: string | null; status: string }[]>({
+  const [nodeCredits, setNodeCredits] = useState<Map<number, number>>(new Map());
+
+  const nodesQuery = useQuery<{ id: number; name: string; displayName: string | null; pixelX: number; pixelY: number; pixelGoal: string | null; avatar: string | null; status: string; pixelCredits?: number }[]>({
     queryKey: ["/api/nodes"],
     refetchInterval: 10000,
   });
@@ -128,13 +130,24 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
   }, [wallsQuery.data]);
 
   useEffect(() => {
+    const unsub = ws.subscribe("statsUpdate", (data: { id: number; pixelCredits?: number }) => {
+      if (typeof data.id === "number" && typeof data.pixelCredits === "number") {
+        setNodeCredits(prev => { const next = new Map(prev); next.set(data.id, data.pixelCredits!); return next; });
+      }
+    });
+    return unsub;
+  }, [ws]);
+
+  useEffect(() => {
     if (nodesQuery.data) {
       const posMap = new Map<number, { x: number; y: number; name: string }>();
       const goalMap = new Map<number, NodeGoal>();
       const avatarMap = new Map<number, AvatarGrid>();
+      const creditsMap = new Map<number, number>();
       for (const n of nodesQuery.data) {
         if (n.status === "computing") {
           posMap.set(n.id, { x: n.pixelX, y: n.pixelY, name: n.displayName || n.name });
+          if (typeof n.pixelCredits === "number") creditsMap.set(n.id, n.pixelCredits);
           if (n.pixelGoal) {
             try {
               const g = JSON.parse(n.pixelGoal);
@@ -151,6 +164,11 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
       }
       setNodePositions(posMap);
       setNodeGoals(goalMap);
+      setNodeCredits(prev => {
+        const merged = new Map(prev);
+        creditsMap.forEach((v, k) => merged.set(k, v));
+        return merged;
+      });
       setNodeAvatars(prev => {
         const merged = new Map(prev);
         avatarMap.forEach((v, k) => merged.set(k, v));
@@ -497,6 +515,20 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
       ctx.fillStyle = isMe ? "#00FF00" : mc;
       ctx.fillText(label, labelX, labelY);
 
+      // Per-node energy (pixelCredits) indicator
+      const knownCredits = isMe ? credits : nodeCredits.get(nId);
+      if (knownCredits !== undefined) {
+        const creditLabel = `⚡${knownCredits}`;
+        ctx.font = "5px monospace";
+        ctx.textAlign = "center";
+        const creditW = ctx.measureText(creditLabel).width;
+        const creditY = labelY - 8;
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.fillRect(labelX - creditW / 2 - 1, creditY - 5, creditW + 2, 6);
+        ctx.fillStyle = knownCredits > 0 ? "#FFD700" : "#FF6666";
+        ctx.fillText(creditLabel, labelX, creditY);
+      }
+
       const bubble = speechBubbles.find(b => b.nodeId === nId);
       if (bubble) {
         const age = Date.now() - bubble.timestamp;
@@ -608,7 +640,7 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
     }
 
     ctx.restore();
-  }, [canvasQuery.data, hoveredCell, selectedPixel, zoom, pan, myPos, nodePositions, nodeId, speechBubbles, nodeGoals, nodeAvatars, regionsQuery.data, wallPositions]);
+  }, [canvasQuery.data, hoveredCell, selectedPixel, zoom, pan, myPos, nodePositions, nodeId, credits, speechBubbles, nodeGoals, nodeAvatars, regionsQuery.data, wallPositions, nodeCredits]);
 
   useEffect(() => {
     drawCanvas();

@@ -464,6 +464,9 @@ async function runPixelAgent(config: OrchestratorConfig) {
       return;
     }
 
+    const wallsData = await storage.getWalls();
+    const wallSet = new Set(wallsData.map(w => `${w.x},${w.y}`));
+
     for (const node of activeNodes) {
       const nodeName = node.displayName || node.name;
 
@@ -559,7 +562,7 @@ async function runPixelAgent(config: OrchestratorConfig) {
 
           if (node.pixelCredits >= 1) {
             const color = PIXEL_COLORS[Math.floor(Math.random() * PIXEL_COLORS.length)];
-            await placePixelForNode(config, node, nodeName, newX, newY, color, canvasData);
+            await placePixelForNode(config, node, nodeName, newX, newY, color, canvasData, wallSet);
           }
           continue;
         }
@@ -568,7 +571,7 @@ async function runPixelAgent(config: OrchestratorConfig) {
 
         if (atTarget) {
           if (node.pixelCredits >= 1) {
-            await placePixelForNode(config, node, nodeName, node.pixelX, node.pixelY, goal.color, canvasData);
+            await placePixelForNode(config, node, nodeName, node.pixelX, node.pixelY, goal.color, canvasData, wallSet);
           }
           await storage.updateNodeGoal(node.id, null);
           config.broadcastAll(JSON.stringify({ type: "nodeGoalCleared", payload: { nodeId: node.id } }));
@@ -585,7 +588,7 @@ async function runPixelAgent(config: OrchestratorConfig) {
 
         if (newX !== node.pixelX || newY !== node.pixelY) {
           await storage.moveNode(node.id, newX, newY);
-          await storage.deductMoveCredit(node.id);
+          await storage.deductMoveCredit(node.id, steps);
           config.broadcastAll(
             JSON.stringify({
               type: "nodeMoved",
@@ -595,7 +598,7 @@ async function runPixelAgent(config: OrchestratorConfig) {
         }
 
         if (node.pixelCredits >= 1) {
-          await placePixelForNode(config, node, nodeName, newX, newY, goal.color, canvasData);
+          await placePixelForNode(config, node, nodeName, newX, newY, goal.color, canvasData, wallSet);
         }
 
       } catch (err: any) {
@@ -631,7 +634,14 @@ async function placePixelForNode(
   y: number,
   color: string,
   canvasData: any,
+  wallSet: Set<string> = new Set(),
 ) {
+  // Skip pixel placement on wall cells
+  if (wallSet.has(`${x},${y}`)) {
+    console.log(`[orchestrator] ${nodeName} skipped pixel placement at (${x},${y}) — wall cell`);
+    return;
+  }
+
   const isCellOccupied =
     canvasData?.grid?.[y]?.[x] && canvasData.grid[y][x] !== "#000000";
   const colorName = getColorName(color);

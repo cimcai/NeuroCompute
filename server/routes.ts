@@ -35,6 +35,9 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Tracks node IDs that are actively connected via WebSocket (populated by WS handler below)
+  const connectedNodeIds = new Set<number>();
+
   app.get(api.nodes.list.path, async (req, res) => {
     const nodes = await storage.getNodes();
     res.json(nodes.map(sanitizeNode));
@@ -1023,6 +1026,10 @@ export async function registerRoutes(
         return res.status(400).json({ message: "nodeId and direction (up/down/left/right) required" });
       }
 
+      if (!connectedNodeIds.has(Number(pusherNodeId))) {
+        return res.status(403).json({ message: "Node is not currently connected" });
+      }
+
       const wallList = await storage.getWalls();
       const wall = wallList.find(w => w.id === wallId);
       if (!wall) return res.status(404).json({ message: "Wall not found" });
@@ -1084,6 +1091,9 @@ export async function registerRoutes(
       const { toNodeId, amount } = req.body;
       if (!toNodeId || !amount || amount < 1) {
         return res.status(400).json({ message: "toNodeId and amount (>=1) required" });
+      }
+      if (!connectedNodeIds.has(fromNodeId)) {
+        return res.status(403).json({ message: "Source node is not currently connected" });
       }
       const from = await storage.getNode(fromNodeId);
       const to = await storage.getNode(Number(toNodeId));
@@ -1209,6 +1219,7 @@ export async function registerRoutes(
           const parsed = wsSchema.send.nodeJoined.parse(message.payload);
           nodeId = parsed.id;
           clients.set(nodeId, socket);
+          connectedNodeIds.add(nodeId);
           await storage.updateNodeStatus(nodeId, "computing");
           const node = await storage.getNode(nodeId);
           if (node) {
@@ -1262,12 +1273,17 @@ export async function registerRoutes(
               payload: { id: saved.id, content: saved.content, senderName: saved.senderName, role: "user" },
             })
           );
-          broadcastAll(
-            JSON.stringify({
-              type: "chatPending",
-              payload: { content: parsed.content },
-            })
-          );
+          // Spatially filter chatPending to nodes within range of the sender
+          const chatPendingMsg = JSON.stringify({
+            type: "chatPending",
+            payload: { content: parsed.content },
+          });
+          if (nodeId && nodePositionCache.has(nodeId)) {
+            const senderPos = nodePositionCache.get(nodeId)!;
+            broadcastNearby(senderPos.x, senderPos.y, 8, chatPendingMsg);
+          } else {
+            broadcastAll(chatPendingMsg);
+          }
           // Submit to CIMC Open Forum (Room 2, no moderation)
           try {
             await cimc.postToOpenForum(parsed.senderName, parsed.content, 2);
@@ -1454,6 +1470,7 @@ export async function registerRoutes(
     socket.on("close", async () => {
       if (nodeId) {
         clients.delete(nodeId);
+        connectedNodeIds.delete(nodeId);
         nodePositionCache.delete(nodeId);
         await storage.updateNodeStatus(nodeId, "offline");
         broadcastAll(
