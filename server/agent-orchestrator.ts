@@ -467,7 +467,7 @@ async function runPixelAgent(config: OrchestratorConfig) {
     const wallsData = await storage.getWalls();
     const wallSet = new Set(wallsData.map(w => `${w.x},${w.y}`));
 
-    for (const node of activeNodes) {
+    for (let node of activeNodes) {
       const nodeName = node.displayName || node.name;
 
       if (!node.avatar) {
@@ -546,23 +546,26 @@ async function runPixelAgent(config: OrchestratorConfig) {
             );
           }
 
-          const dir = DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)];
-          const newX = Math.max(0, Math.min(31, node.pixelX + dir.dx));
-          const newY = Math.max(0, Math.min(31, node.pixelY + dir.dy));
-          if (newX !== node.pixelX || newY !== node.pixelY) {
-            await storage.moveNode(node.id, newX, newY);
-            await storage.deductMoveCredit(node.id);
-            config.broadcastAll(
-              JSON.stringify({
-                type: "nodeMoved",
-                payload: { nodeId: node.id, nodeName, x: newX, y: newY },
-              })
-            );
-          }
-
           if (node.pixelCredits >= 1) {
-            const color = PIXEL_COLORS[Math.floor(Math.random() * PIXEL_COLORS.length)];
-            await placePixelForNode(config, node, nodeName, newX, newY, color, canvasData, wallSet);
+            const dir = DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)];
+            const newX = Math.max(0, Math.min(31, node.pixelX + dir.dx));
+            const newY = Math.max(0, Math.min(31, node.pixelY + dir.dy));
+            if (newX !== node.pixelX || newY !== node.pixelY) {
+              await storage.moveNode(node.id, newX, newY);
+              await storage.deductMoveCredit(node.id);
+              config.broadcastAll(
+                JSON.stringify({
+                  type: "nodeMoved",
+                  payload: { nodeId: node.id, nodeName, x: newX, y: newY },
+                })
+              );
+              node = { ...node, pixelX: newX, pixelY: newY, pixelCredits: node.pixelCredits - 1 };
+            }
+
+            if (node.pixelCredits >= 1) {
+              const color = PIXEL_COLORS[Math.floor(Math.random() * PIXEL_COLORS.length)];
+              await placePixelForNode(config, node, nodeName, newX, newY, color, canvasData, wallSet);
+            }
           }
           continue;
         }
@@ -582,23 +585,27 @@ async function runPixelAgent(config: OrchestratorConfig) {
         const distX = Math.abs(goal.targetX - node.pixelX);
         const distY = Math.abs(goal.targetY - node.pixelY);
         const steps = Math.min(3, Math.max(distX, distY));
-        const { dx, dy } = moveToward(node.pixelX, node.pixelY, goal.targetX, goal.targetY);
-        const newX = Math.max(0, Math.min(31, node.pixelX + dx * steps));
-        const newY = Math.max(0, Math.min(31, node.pixelY + dy * steps));
 
-        if (newX !== node.pixelX || newY !== node.pixelY) {
-          await storage.moveNode(node.id, newX, newY);
-          await storage.deductMoveCredit(node.id, steps);
-          config.broadcastAll(
-            JSON.stringify({
-              type: "nodeMoved",
-              payload: { nodeId: node.id, nodeName, x: newX, y: newY },
-            })
-          );
+        if (node.pixelCredits >= steps) {
+          const { dx, dy } = moveToward(node.pixelX, node.pixelY, goal.targetX, goal.targetY);
+          const newX = Math.max(0, Math.min(31, node.pixelX + dx * steps));
+          const newY = Math.max(0, Math.min(31, node.pixelY + dy * steps));
+
+          if (newX !== node.pixelX || newY !== node.pixelY) {
+            await storage.moveNode(node.id, newX, newY);
+            await storage.deductMoveCredit(node.id, steps);
+            config.broadcastAll(
+              JSON.stringify({
+                type: "nodeMoved",
+                payload: { nodeId: node.id, nodeName, x: newX, y: newY },
+              })
+            );
+            node = { ...node, pixelX: newX, pixelY: newY, pixelCredits: node.pixelCredits - steps };
+          }
         }
 
         if (node.pixelCredits >= 1) {
-          await placePixelForNode(config, node, nodeName, newX, newY, goal.color, canvasData, wallSet);
+          await placePixelForNode(config, node, nodeName, node.pixelX, node.pixelY, goal.color, canvasData, wallSet);
         }
 
       } catch (err: any) {

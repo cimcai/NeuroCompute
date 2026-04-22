@@ -1021,13 +1021,22 @@ export async function registerRoutes(
   app.post("/api/walls/:id/push", async (req, res) => {
     try {
       const wallId = Number(req.params.id);
-      const { nodeId: pusherNodeId, direction } = req.body;
+      const { nodeId: pusherNodeId, direction, nodeToken } = req.body;
       if (!pusherNodeId || !direction || !["up", "down", "left", "right"].includes(direction)) {
         return res.status(400).json({ message: "nodeId and direction (up/down/left/right) required" });
+      }
+      if (!nodeToken || typeof nodeToken !== "string") {
+        return res.status(400).json({ message: "nodeToken required for authorization" });
       }
 
       if (!connectedNodeIds.has(Number(pusherNodeId))) {
         return res.status(403).json({ message: "Node is not currently connected" });
+      }
+      // Verify session token to prevent IDOR
+      const pushTokenHash = createHash("sha256").update(nodeToken.trim()).digest("hex");
+      const ownedPusher = await storage.getNodeBySessionTokenHash(pushTokenHash, Number(pusherNodeId));
+      if (!ownedPusher) {
+        return res.status(403).json({ message: "Invalid node session token" });
       }
 
       const wallList = await storage.getWalls();
@@ -1037,10 +1046,11 @@ export async function registerRoutes(
       const pusher = await storage.getNode(Number(pusherNodeId));
       if (!pusher) return res.status(404).json({ message: "Node not found" });
 
+      // Cardinal adjacency only (no diagonals)
       const adjDx = Math.abs(pusher.pixelX - wall.x);
       const adjDy = Math.abs(pusher.pixelY - wall.y);
-      if (adjDx > 1 || adjDy > 1) {
-        return res.status(400).json({ message: "Node is not adjacent to this wall" });
+      if (adjDx + adjDy > 1) {
+        return res.status(400).json({ message: "Node is not cardinally adjacent to this wall" });
       }
 
       const PUSH_WINDOW_MS = 3000;
@@ -1088,20 +1098,30 @@ export async function registerRoutes(
   app.post("/api/nodes/:id/transfer-energy", async (req, res) => {
     try {
       const fromNodeId = Number(req.params.id);
-      const { toNodeId, amount } = req.body;
+      const { toNodeId, amount, nodeToken } = req.body;
       if (!toNodeId || !amount || amount < 1) {
         return res.status(400).json({ message: "toNodeId and amount (>=1) required" });
+      }
+      if (!nodeToken || typeof nodeToken !== "string") {
+        return res.status(400).json({ message: "nodeToken required for authorization" });
       }
       if (!connectedNodeIds.has(fromNodeId)) {
         return res.status(403).json({ message: "Source node is not currently connected" });
       }
+      // Verify node session token to prevent IDOR
+      const tokenHash = createHash("sha256").update(nodeToken.trim()).digest("hex");
+      const ownedNode = await storage.getNodeBySessionTokenHash(tokenHash, fromNodeId);
+      if (!ownedNode) {
+        return res.status(403).json({ message: "Invalid node session token" });
+      }
       const from = await storage.getNode(fromNodeId);
       const to = await storage.getNode(Number(toNodeId));
       if (!from || !to) return res.status(404).json({ message: "Node not found" });
+      // Cardinal adjacency only (no diagonals)
       const adjDx = Math.abs(from.pixelX - to.pixelX);
       const adjDy = Math.abs(from.pixelY - to.pixelY);
-      if (adjDx > 1 || adjDy > 1) {
-        return res.status(400).json({ message: "Nodes must be adjacent to transfer energy" });
+      if (adjDx + adjDy > 1) {
+        return res.status(400).json({ message: "Nodes must be cardinally adjacent to transfer energy" });
       }
       const { from: updatedFrom, to: updatedTo } = await storage.transferEnergy(fromNodeId, Number(toNodeId), Number(amount));
       broadcastAll(JSON.stringify({
@@ -1188,11 +1208,16 @@ export async function registerRoutes(
     });
   }
 
+  // Spatial broadcast radii (Manhattan distance, in grid cells)
+  const CHAT_RADIUS = 8;
+  const OBSERVATION_RADIUS = 12;
+  const GOAL_RADIUS = 16;
+
   function broadcastNearby(centerX: number, centerY: number, radius: number, msg: string) {
     clients.forEach((ws, nId) => {
       if (ws.readyState !== WebSocket.OPEN) return;
       const pos = nodePositionCache.get(nId);
-      if (!pos) { ws.send(msg); return; }
+      if (!pos) return; // skip nodes with unknown position — outside range by default
       if (Math.abs(pos.x - centerX) + Math.abs(pos.y - centerY) <= radius) {
         ws.send(msg);
       }
@@ -1280,7 +1305,7 @@ export async function registerRoutes(
           });
           if (nodeId && nodePositionCache.has(nodeId)) {
             const senderPos = nodePositionCache.get(nodeId)!;
-            broadcastNearby(senderPos.x, senderPos.y, 8, chatPendingMsg);
+            broadcastNearby(senderPos.x, senderPos.y, CHAT_RADIUS, chatPendingMsg);
           } else {
             broadcastAll(chatPendingMsg);
           }
