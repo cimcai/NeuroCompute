@@ -1188,6 +1188,12 @@ export async function registerRoutes(
               payload: { nodeId: goalNodeId, nodeName: goalNodeName || "Unknown", description, targetX, targetY, color },
             })
           );
+          // Append goal to node memory
+          storage.appendNodeMemoryEvent(goalNodeId, {
+            type: "goal",
+            content: `🏗️ ${description} at (${targetX},${targetY})`,
+            ts: Date.now(),
+          }).catch(() => {});
         } else if (message.type === "avatarSet") {
           const { nodeId: avatarNodeId, avatar } = message.payload;
           if (!avatarNodeId || !Array.isArray(avatar)) return;

@@ -74,6 +74,7 @@ export const ws = {
     nodeGoalSet: z.object({ nodeId: z.number(), nodeName: z.string(), description: z.string(), targetX: z.number(), targetY: z.number(), color: z.string() }),
     nodeGoalCleared: z.object({ nodeId: z.number() }),
     avatarUpdate: z.object({ nodeId: z.number(), avatar: z.array(z.array(z.string())) }),
+    memoryContext: z.object({ events: z.array(z.object({ type: z.string(), content: z.string(), ts: z.number() })) }),
   },
 };
 
