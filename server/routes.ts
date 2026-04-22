@@ -978,6 +978,134 @@ export async function registerRoutes(
     }
   });
 
+  const wallPushPending = new Map<number, { nodeId: number; direction: string; ts: number }>();
+
+  app.get("/api/walls", async (_req, res) => {
+    try {
+      const wallList = await storage.getWalls();
+      res.json(wallList);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch walls" });
+    }
+  });
+
+  app.post("/api/walls/seed", async (_req, res) => {
+    try {
+      const existing = await storage.getWalls();
+      if (existing.length > 0) return res.json({ seeded: 0, total: existing.length });
+      const initialWalls = [
+        { x: 8, y: 8 }, { x: 8, y: 9 }, { x: 8, y: 10 },
+        { x: 20, y: 15 }, { x: 21, y: 15 },
+        { x: 14, y: 22 }, { x: 15, y: 22 }, { x: 16, y: 22 },
+        { x: 25, y: 5 }, { x: 6, y: 25 },
+      ];
+      const created: any[] = [];
+      for (const pos of initialWalls) {
+        const existing = await storage.getWallAt(pos.x, pos.y);
+        if (!existing) {
+          const w = await storage.createWall(pos);
+          created.push(w);
+          broadcastAll(JSON.stringify({ type: "wallAdded", payload: { id: w.id, x: w.x, y: w.y } }));
+        }
+      }
+      res.json({ seeded: created.length, total: created.length });
+    } catch (err) {
+      logger.error("api", "Wall seed error", err);
+      res.status(500).json({ message: "Failed to seed walls" });
+    }
+  });
+
+  app.post("/api/walls/:id/push", async (req, res) => {
+    try {
+      const wallId = Number(req.params.id);
+      const { nodeId: pusherNodeId, direction } = req.body;
+      if (!pusherNodeId || !direction || !["up", "down", "left", "right"].includes(direction)) {
+        return res.status(400).json({ message: "nodeId and direction (up/down/left/right) required" });
+      }
+
+      const wallList = await storage.getWalls();
+      const wall = wallList.find(w => w.id === wallId);
+      if (!wall) return res.status(404).json({ message: "Wall not found" });
+
+      const pusher = await storage.getNode(Number(pusherNodeId));
+      if (!pusher) return res.status(404).json({ message: "Node not found" });
+
+      const adjDx = Math.abs(pusher.pixelX - wall.x);
+      const adjDy = Math.abs(pusher.pixelY - wall.y);
+      if (adjDx > 1 || adjDy > 1) {
+        return res.status(400).json({ message: "Node is not adjacent to this wall" });
+      }
+
+      const PUSH_WINDOW_MS = 3000;
+      const pending = wallPushPending.get(wallId);
+      const now = Date.now();
+
+      if (pending && pending.nodeId !== Number(pusherNodeId) && pending.direction === direction && now - pending.ts <= PUSH_WINDOW_MS) {
+        wallPushPending.delete(wallId);
+        const dirMap: Record<string, { dx: number; dy: number }> = {
+          up: { dx: 0, dy: -1 }, down: { dx: 0, dy: 1 },
+          left: { dx: -1, dy: 0 }, right: { dx: 1, dy: 0 },
+        };
+        const { dx, dy } = dirMap[direction];
+        const newX = Math.max(0, Math.min(31, wall.x + dx));
+        const newY = Math.max(0, Math.min(31, wall.y + dy));
+        if (newX === wall.x && newY === wall.y) {
+          return res.status(400).json({ message: "Wall cannot move further in that direction" });
+        }
+        const existing = await storage.getWallAt(newX, newY);
+        if (existing) return res.status(400).json({ message: "Target cell already has a wall" });
+        const updated = await storage.moveWall(wallId, newX, newY);
+        broadcastAll(JSON.stringify({
+          type: "wallMoved",
+          payload: { id: updated.id, fromX: wall.x, fromY: wall.y, toX: newX, toY: newY },
+        }));
+        console.log(`[walls] Wall ${wallId} pushed ${direction} from (${wall.x},${wall.y}) to (${newX},${newY}) by cooperative push`);
+        return res.json({ moved: true, wall: updated });
+      }
+
+      wallPushPending.set(wallId, { nodeId: Number(pusherNodeId), direction, ts: now });
+      setTimeout(() => {
+        const p = wallPushPending.get(wallId);
+        if (p && p.nodeId === Number(pusherNodeId) && p.ts === now) {
+          wallPushPending.delete(wallId);
+        }
+      }, PUSH_WINDOW_MS);
+
+      res.json({ moved: false, pending: true, message: "Push registered — need a second adjacent node to push in the same direction within 3s" });
+    } catch (err) {
+      logger.error("api", "Wall push error", err);
+      res.status(500).json({ message: "Failed to push wall" });
+    }
+  });
+
+  app.post("/api/nodes/:id/transfer-energy", async (req, res) => {
+    try {
+      const fromNodeId = Number(req.params.id);
+      const { toNodeId, amount } = req.body;
+      if (!toNodeId || !amount || amount < 1) {
+        return res.status(400).json({ message: "toNodeId and amount (>=1) required" });
+      }
+      const from = await storage.getNode(fromNodeId);
+      const to = await storage.getNode(Number(toNodeId));
+      if (!from || !to) return res.status(404).json({ message: "Node not found" });
+      const adjDx = Math.abs(from.pixelX - to.pixelX);
+      const adjDy = Math.abs(from.pixelY - to.pixelY);
+      if (adjDx > 1 || adjDy > 1) {
+        return res.status(400).json({ message: "Nodes must be adjacent to transfer energy" });
+      }
+      const { from: updatedFrom, to: updatedTo } = await storage.transferEnergy(fromNodeId, Number(toNodeId), Number(amount));
+      broadcastAll(JSON.stringify({
+        type: "energyTransferred",
+        payload: { fromNodeId, toNodeId: Number(toNodeId), amount: Number(amount), fromCredits: updatedFrom.pixelCredits, toCredits: updatedTo.pixelCredits },
+      }));
+      res.json({ from: sanitizeNode(updatedFrom), to: sanitizeNode(updatedTo) });
+    } catch (err: any) {
+      if (err.message === "Not enough energy") return res.status(400).json({ message: "Not enough energy to transfer" });
+      logger.error("api", "Transfer energy error", err);
+      res.status(500).json({ message: "Failed to transfer energy" });
+    }
+  });
+
   await storage.markAllNodesOffline();
   console.log("[startup] Reset all stale nodes to offline");
 
@@ -989,9 +1117,27 @@ export async function registerRoutes(
     }
   }, 60_000);
 
+  // Seed walls on startup
+  storage.getWalls().then(async (existingWalls) => {
+    if (existingWalls.length === 0) {
+      const initialWalls = [
+        { x: 8, y: 8 }, { x: 8, y: 9 }, { x: 8, y: 10 },
+        { x: 20, y: 15 }, { x: 21, y: 15 },
+        { x: 14, y: 22 }, { x: 15, y: 22 }, { x: 16, y: 22 },
+        { x: 25, y: 5 }, { x: 6, y: 25 },
+      ];
+      for (const pos of initialWalls) {
+        const existing = await storage.getWallAt(pos.x, pos.y);
+        if (!existing) await storage.createWall(pos);
+      }
+      console.log("[startup] Seeded initial walls");
+    }
+  }).catch(() => {});
+
   // WebSocket
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
   const clients = new Map<number, WebSocket>();
+  const nodePositionCache = new Map<number, { x: number; y: number }>();
 
   const pingInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
@@ -1015,9 +1161,30 @@ export async function registerRoutes(
   }
 
   function broadcastAll(msg: string) {
+    // Intercept nodeMoved to update position cache
+    try {
+      const parsed = JSON.parse(msg);
+      if (parsed.type === "nodeMoved" && parsed.payload) {
+        const { nodeId: nid, x, y } = parsed.payload;
+        if (typeof nid === "number" && typeof x === "number" && typeof y === "number") {
+          nodePositionCache.set(nid, { x, y });
+        }
+      }
+    } catch {}
     wss.clients.forEach((c) => {
       if (c.readyState === WebSocket.OPEN) {
         c.send(msg);
+      }
+    });
+  }
+
+  function broadcastNearby(centerX: number, centerY: number, radius: number, msg: string) {
+    clients.forEach((ws, nId) => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      const pos = nodePositionCache.get(nId);
+      if (!pos) { ws.send(msg); return; }
+      if (Math.abs(pos.x - centerX) + Math.abs(pos.y - centerY) <= radius) {
+        ws.send(msg);
       }
     });
   }
@@ -1045,6 +1212,7 @@ export async function registerRoutes(
           await storage.updateNodeStatus(nodeId, "computing");
           const node = await storage.getNode(nodeId);
           if (node) {
+            nodePositionCache.set(nodeId, { x: node.pixelX, y: node.pixelY });
             broadcast(
               JSON.stringify({ type: "nodeJoined", payload: { id: node.id, name: node.displayName || node.name } }),
               socket
@@ -1286,6 +1454,7 @@ export async function registerRoutes(
     socket.on("close", async () => {
       if (nodeId) {
         clients.delete(nodeId);
+        nodePositionCache.delete(nodeId);
         await storage.updateNodeStatus(nodeId, "offline");
         broadcastAll(
           JSON.stringify({ type: "nodeLeft", payload: { id: nodeId } })
@@ -1303,7 +1472,7 @@ export async function registerRoutes(
     return false;
   }
 
-  startOrchestrator({ broadcastAll, sendToNode });
+  startOrchestrator({ broadcastAll, sendToNode, broadcastNearby });
 
   return httpServer;
 }

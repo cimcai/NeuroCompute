@@ -5,11 +5,15 @@ import { runDailyReport, getIntervalMs, getReportFrequency } from "./analytics";
 
 type BroadcastFn = (msg: string) => void;
 type SendToNodeFn = (nodeId: number, msg: string) => boolean;
+type BroadcastNearbyFn = (centerX: number, centerY: number, radius: number, msg: string) => void;
 
 interface OrchestratorConfig {
   broadcastAll: BroadcastFn;
   sendToNode: SendToNodeFn;
+  broadcastNearby: BroadcastNearbyFn;
 }
+
+const SPATIAL_CHAT_RADIUS = 8;
 
 const CHAT_INTERVAL_MS = 90_000;
 const CONVO_INTERVAL_MS = 45_000;
@@ -290,14 +294,20 @@ async function runChatAgent(config: OrchestratorConfig) {
       const latest = newEntries[newEntries.length - 1];
       console.log(`[orchestrator] Chat agent: responding to "${latest.speaker}" in Room 2`);
 
-      config.broadcastAll(
-        JSON.stringify({
-          type: "chatPending",
-          payload: {
-            content: `Respond thoughtfully to this message from the CIMC Open Forum by ${latest.speaker}: "${latest.content}"`,
-          },
-        })
-      );
+      const chatMsg = JSON.stringify({
+        type: "chatPending",
+        payload: {
+          content: `Respond thoughtfully to this message from the CIMC Open Forum by ${latest.speaker}: "${latest.content}"`,
+        },
+      });
+
+      // Pick a random active node as spatial center; fall back to broadcastAll if none
+      if (active.length > 0) {
+        const center = active[Math.floor(Math.random() * active.length)];
+        config.broadcastNearby(center.pixelX, center.pixelY, SPATIAL_CHAT_RADIUS, chatMsg);
+      } else {
+        config.broadcastAll(chatMsg);
+      }
     } else {
       lastSeenEntryId = Math.max(...entries.map((e) => e.id), lastSeenEntryId);
     }
@@ -538,6 +548,7 @@ async function runPixelAgent(config: OrchestratorConfig) {
           const newY = Math.max(0, Math.min(31, node.pixelY + dir.dy));
           if (newX !== node.pixelX || newY !== node.pixelY) {
             await storage.moveNode(node.id, newX, newY);
+            await storage.deductMoveCredit(node.id);
             config.broadcastAll(
               JSON.stringify({
                 type: "nodeMoved",
@@ -574,6 +585,7 @@ async function runPixelAgent(config: OrchestratorConfig) {
 
         if (newX !== node.pixelX || newY !== node.pixelY) {
           await storage.moveNode(node.id, newX, newY);
+          await storage.deductMoveCredit(node.id);
           config.broadcastAll(
             JSON.stringify({
               type: "nodeMoved",

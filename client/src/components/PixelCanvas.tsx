@@ -53,6 +53,7 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [nodePositions, setNodePositions] = useState<Map<number, { x: number; y: number; name: string }>>(new Map());
+  const [wallPositions, setWallPositions] = useState<Map<number, { x: number; y: number }>>(new Map());
   const [speechBubbles, setSpeechBubbles] = useState<SpeechBubble[]>([]);
   const [nodeGoals, setNodeGoals] = useState<Map<number, NodeGoal>>(new Map());
   const [nodeAvatars, setNodeAvatars] = useState<Map<number, AvatarGrid>>(new Map());
@@ -102,6 +103,11 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
     refetchInterval: 30000,
   });
 
+  const wallsQuery = useQuery<{ id: number; x: number; y: number }[]>({
+    queryKey: ["/api/walls"],
+    refetchInterval: 60000,
+  });
+
   const subPixelQuery = useQuery<{ regionX: number; regionY: number; pixels: { id: number; subX: number; subY: number; color: string; nodeName: string }[] }>({
     queryKey: ["/api/canvas/sub", zoomedRegion?.x, zoomedRegion?.y],
     queryFn: async () => {
@@ -112,6 +118,14 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
     },
     enabled: zoomedRegion !== null,
   });
+
+  useEffect(() => {
+    if (wallsQuery.data) {
+      const wMap = new Map<number, { x: number; y: number }>();
+      for (const w of wallsQuery.data) wMap.set(w.id, { x: w.x, y: w.y });
+      setWallPositions(wMap);
+    }
+  }, [wallsQuery.data]);
 
   useEffect(() => {
     if (nodesQuery.data) {
@@ -200,6 +214,20 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
         next.delete(data.nodeId);
         return next;
       });
+    });
+    return unsub;
+  }, [ws]);
+
+  useEffect(() => {
+    const unsub = ws.subscribe("wallAdded", (data: { id: number; x: number; y: number }) => {
+      setWallPositions(prev => { const next = new Map(prev); next.set(data.id, { x: data.x, y: data.y }); return next; });
+    });
+    return unsub;
+  }, [ws]);
+
+  useEffect(() => {
+    const unsub = ws.subscribe("wallMoved", (data: { id: number; fromX: number; fromY: number; toX: number; toY: number }) => {
+      setWallPositions(prev => { const next = new Map(prev); next.set(data.id, { x: data.toX, y: data.toY }); return next; });
     });
     return unsub;
   }, [ws]);
@@ -314,6 +342,30 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
       }
     }
 
+    // Draw walls as dark stone tiles
+    wallPositions.forEach(pos => {
+      const wx = pos.x * CELL_SIZE;
+      const wy = pos.y * CELL_SIZE;
+      ctx.fillStyle = "#1e1a16";
+      ctx.fillRect(wx, wy, CELL_SIZE, CELL_SIZE);
+      ctx.strokeStyle = "#5c4a30";
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(wx + 0.75, wy + 0.75, CELL_SIZE - 1.5, CELL_SIZE - 1.5);
+      ctx.strokeStyle = "#3a2e1e";
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(wx, wy); ctx.lineTo(wx + CELL_SIZE, wy + CELL_SIZE);
+      ctx.moveTo(wx + CELL_SIZE * 0.5, wy); ctx.lineTo(wx + CELL_SIZE, wy + CELL_SIZE * 0.5);
+      ctx.moveTo(wx, wy + CELL_SIZE * 0.5); ctx.lineTo(wx + CELL_SIZE * 0.5, wy + CELL_SIZE);
+      ctx.stroke();
+      ctx.fillStyle = "#8B6914";
+      ctx.font = "bold 7px monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("▓", wx + CELL_SIZE / 2, wy + CELL_SIZE / 2);
+      ctx.textBaseline = "alphabetic";
+    });
+
     ctx.strokeStyle = "rgba(0, 255, 255, 0.08)";
     ctx.lineWidth = 0.5;
     for (let i = 0; i <= CANVAS_SIZE; i++) {
@@ -361,6 +413,21 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
       ctx.fillText(goalLabel, toX, toY + 8);
       ctx.restore();
     });
+
+    // Highlight nodes within spatial chat range (Manhattan distance ≤ 8) of my node
+    if (myPos) {
+      nodePositions.forEach((pos, nId) => {
+        if (nId === nodeId) return;
+        const dist = Math.abs(pos.x - myPos.x) + Math.abs(pos.y - myPos.y);
+        if (dist <= 8) {
+          ctx.strokeStyle = "rgba(0,255,160,0.35)";
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 2]);
+          ctx.strokeRect(pos.x * CELL_SIZE - 2, pos.y * CELL_SIZE - 2, CELL_SIZE + 4, CELL_SIZE + 4);
+          ctx.setLineDash([]);
+        }
+      });
+    }
 
     let markerIdx = 0;
     const allNodes = new Map(nodePositions);
@@ -541,7 +608,7 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
     }
 
     ctx.restore();
-  }, [canvasQuery.data, hoveredCell, selectedPixel, zoom, pan, myPos, nodePositions, nodeId, speechBubbles, nodeGoals, nodeAvatars, regionsQuery.data]);
+  }, [canvasQuery.data, hoveredCell, selectedPixel, zoom, pan, myPos, nodePositions, nodeId, speechBubbles, nodeGoals, nodeAvatars, regionsQuery.data, wallPositions]);
 
   useEffect(() => {
     drawCanvas();
@@ -849,6 +916,14 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
           <span><span className="font-semibold text-foreground">{totalNetworkTokens.toLocaleString()}</span> tokens</span>
           <span className="text-white/10">|</span>
           <span><span className="font-semibold text-foreground">{currentRate}</span> tok/credit</span>
+          <span className="text-white/10">|</span>
+          <span title="Stone walls — cooperative push to move them"><span className="font-semibold text-foreground">{wallPositions.size}</span> walls</span>
+          {nodeId && (
+            <>
+              <span className="text-white/10">|</span>
+              <span className="text-amber-400/70" title="Each step costs 1 energy (credit)">⚡ 1/step</span>
+            </>
+          )}
         </div>
       </CardContent>
     </Card>

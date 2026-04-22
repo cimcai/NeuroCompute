@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { nodes, messages, bridgeGames, subPixels, journalEntries, dailySnapshots, patrons, getPixelRate, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type SubPixel, type InsertSubPixel, type JournalEntry, type InsertJournalEntry, type DailySnapshot, type InsertDailySnapshot, type Patron } from "@shared/schema";
+import { nodes, messages, bridgeGames, subPixels, journalEntries, dailySnapshots, patrons, walls, getPixelRate, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type SubPixel, type InsertSubPixel, type JournalEntry, type InsertJournalEntry, type DailySnapshot, type InsertDailySnapshot, type Patron, type Wall, type InsertWall } from "@shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 
 export interface PatronLeaderboardEntry {
@@ -55,6 +55,13 @@ export interface IStorage {
   updateNodeMemory(id: number, memory: string): Promise<Node>;
   appendNodeMemoryEvent(id: number, event: { type: string; content: string; ts: number }): Promise<void>;
   getNodeJournalEntries(nodeId: number, limit?: number, offset?: number): Promise<JournalEntry[]>;
+  deductMoveCredit(id: number): Promise<void>;
+  getWalls(): Promise<Wall[]>;
+  getWallAt(x: number, y: number): Promise<Wall | undefined>;
+  createWall(data: InsertWall): Promise<Wall>;
+  moveWall(id: number, x: number, y: number): Promise<Wall>;
+  deleteWall(id: number): Promise<void>;
+  transferEnergy(fromNodeId: number, toNodeId: number, amount: number): Promise<{ from: Node; to: Node }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -433,6 +440,45 @@ export class DatabaseStorage implements IStorage {
       .limit(limit)
       .offset(offset);
     return entries.reverse();
+  }
+
+  async deductMoveCredit(id: number): Promise<void> {
+    await db.update(nodes).set({ pixelCredits: sql`GREATEST(0, pixel_credits - 1)` }).where(eq(nodes.id, id));
+  }
+
+  async getWalls(): Promise<Wall[]> {
+    return await db.select().from(walls).orderBy(walls.id);
+  }
+
+  async getWallAt(x: number, y: number): Promise<Wall | undefined> {
+    const [wall] = await db.select().from(walls).where(and(eq(walls.x, x), eq(walls.y, y)));
+    return wall;
+  }
+
+  async createWall(data: InsertWall): Promise<Wall> {
+    const [created] = await db.insert(walls).values(data).returning();
+    return created;
+  }
+
+  async moveWall(id: number, x: number, y: number): Promise<Wall> {
+    const [updated] = await db.update(walls).set({ x, y }).where(eq(walls.id, id)).returning();
+    if (!updated) throw new Error("Wall not found");
+    return updated;
+  }
+
+  async deleteWall(id: number): Promise<void> {
+    await db.delete(walls).where(eq(walls.id, id));
+  }
+
+  async transferEnergy(fromNodeId: number, toNodeId: number, amount: number): Promise<{ from: Node; to: Node }> {
+    const [from] = await db.select().from(nodes).where(eq(nodes.id, fromNodeId));
+    const [to] = await db.select().from(nodes).where(eq(nodes.id, toNodeId));
+    if (!from) throw new Error("Source node not found");
+    if (!to) throw new Error("Target node not found");
+    if (from.pixelCredits < amount) throw new Error("Not enough energy");
+    const [updatedFrom] = await db.update(nodes).set({ pixelCredits: from.pixelCredits - amount }).where(eq(nodes.id, fromNodeId)).returning();
+    const [updatedTo] = await db.update(nodes).set({ pixelCredits: to.pixelCredits + amount }).where(eq(nodes.id, toNodeId)).returning();
+    return { from: updatedFrom, to: updatedTo };
   }
 }
 

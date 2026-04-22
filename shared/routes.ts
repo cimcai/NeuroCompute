@@ -55,6 +55,7 @@ export const ws = {
     journalEntry: z.object({ content: z.string(), nodeName: z.string(), nodeId: z.number() }),
     pixelGoalSet: z.object({ nodeId: z.number(), nodeName: z.string(), description: z.string(), targetX: z.number(), targetY: z.number(), color: z.string() }),
     avatarSet: z.object({ nodeId: z.number(), avatar: z.array(z.array(z.string())) }),
+    subPixelGoalResponse: z.object({ nodeId: z.number(), regionX: z.number(), regionY: z.number(), placements: z.array(z.any()) }),
   },
   receive: {
     nodeJoined: z.object({ id: z.number(), name: z.string() }),
@@ -75,6 +76,14 @@ export const ws = {
     nodeGoalCleared: z.object({ nodeId: z.number() }),
     avatarUpdate: z.object({ nodeId: z.number(), avatar: z.array(z.array(z.string())) }),
     memoryContext: z.object({ events: z.array(z.object({ type: z.string(), content: z.string(), ts: z.number() })) }),
+    wallAdded: z.object({ id: z.number(), x: z.number(), y: z.number() }),
+    wallMoved: z.object({ id: z.number(), fromX: z.number(), fromY: z.number(), toX: z.number(), toY: z.number() }),
+    wallRemoved: z.object({ id: z.number() }),
+    energyTransferred: z.object({ fromNodeId: z.number(), toNodeId: z.number(), amount: z.number(), fromCredits: z.number(), toCredits: z.number() }),
+    pixelPlaced: z.object({ x: z.number(), y: z.number(), color: z.string(), agent: z.string(), nodeId: z.number(), pixelCredits: z.number(), isSubPixelOnly: z.boolean().optional() }),
+    subPixelPlaced: z.object({ id: z.number(), regionX: z.number(), regionY: z.number(), subX: z.number(), subY: z.number(), color: z.string(), nodeName: z.string(), nodeId: z.number() }),
+    subPixelGoalRequest: z.object({ regionX: z.number(), regionY: z.number(), macroColor: z.string(), macroColorName: z.string(), existingSubPixels: z.array(z.any()), creditsLeft: z.number(), goalDescription: z.string().nullable().optional() }),
+    convoPending: z.object({ topic: z.string() }),
   },
 };
 

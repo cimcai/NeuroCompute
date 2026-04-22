@@ -129,3 +129,15 @@ export const insertDailySnapshotSchema = createInsertSchema(dailySnapshots).omit
 
 export type DailySnapshot = typeof dailySnapshots.$inferSelect;
 export type InsertDailySnapshot = z.infer<typeof insertDailySnapshotSchema>;
+
+export const walls = pgTable("walls", {
+  id: serial("id").primaryKey(),
+  x: integer("x").notNull(),
+  y: integer("y").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertWallSchema = createInsertSchema(walls).omit({ id: true, createdAt: true });
+
+export type Wall = typeof walls.$inferSelect;
+export type InsertWall = z.infer<typeof insertWallSchema>;
