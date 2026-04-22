@@ -4,9 +4,10 @@ import { useWebSocket } from "@/hooks/use-websocket";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Activity, Cpu, Server, Trophy, Paintbrush, Users, Zap } from "lucide-react";
+import { Activity, Cpu, Server, Trophy, Paintbrush, Users, Zap, ExternalLink } from "lucide-react";
 import { Node } from "@shared/schema";
 import { motion, AnimatePresence } from "framer-motion";
+import { Link } from "wouter";
 
 interface PatronEntry {
   id: number;
@@ -79,6 +80,7 @@ export function Leaderboard() {
           pixelY: 16,
           pixelGoal: null,
           avatar: null,
+          memory: null,
           status: "computing",
           lastSeen: new Date(),
         };
@@ -225,10 +227,15 @@ export function Leaderboard() {
                       <div className="w-6 text-center font-mono text-xs text-muted-foreground">#{index + 1}</div>
                       <div>
                         <div className="font-medium text-sm flex items-center gap-1.5">
-                          {node.displayName || node.name}
+                          <Link href={`/node/${node.id}`} data-testid={`link-node-profile-${node.id}`} className="hover:text-primary transition-colors">
+                            {node.displayName || node.name}
+                          </Link>
                           {node.status === "computing" && (
                             <Cpu className="w-3 h-3 text-primary animate-pulse" />
                           )}
+                          <Link href={`/node/${node.id}`} className="text-muted-foreground hover:text-primary transition-colors" data-testid={`link-node-icon-${node.id}`}>
+                            <ExternalLink className="w-3 h-3" />
+                          </Link>
                         </div>
                         <div className="text-[10px] text-muted-foreground">ID #{node.id}</div>
                       </div>

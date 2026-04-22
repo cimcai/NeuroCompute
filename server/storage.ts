@@ -52,6 +52,9 @@ export interface IStorage {
   linkNodeToPatron(nodeId: number, patronId: number): Promise<Node>;
   getPatronLeaderboard(period?: 'all' | '7d' | '24h'): Promise<PatronLeaderboardEntry[]>;
   getNetworkStats(): Promise<{ activeAgents: number; totalTokens: number; totalPatrons: number }>;
+  updateNodeMemory(id: number, memory: string): Promise<Node>;
+  appendNodeMemoryEvent(id: number, event: { type: string; content: string; ts: number }): Promise<void>;
+  getNodeJournalEntries(nodeId: number, limit?: number): Promise<JournalEntry[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -398,6 +401,37 @@ export class DatabaseStorage implements IStorage {
       totalTokens: nodeStats?.totalTokens ?? 0,
       totalPatrons: patronCount?.count ?? 0,
     };
+  }
+
+  async updateNodeMemory(id: number, memory: string): Promise<Node> {
+    const [updated] = await db.update(nodes)
+      .set({ memory })
+      .where(eq(nodes.id, id))
+      .returning();
+    if (!updated) throw new Error("Node not found");
+    return updated;
+  }
+
+  async appendNodeMemoryEvent(id: number, event: { type: string; content: string; ts: number }): Promise<void> {
+    const node = await this.getNode(id);
+    if (!node) return;
+    let events: { type: string; content: string; ts: number }[] = [];
+    if (node.memory) {
+      try { events = JSON.parse(node.memory); } catch {}
+    }
+    events.push(event);
+    if (events.length > 20) events = events.slice(events.length - 20);
+    await this.updateNodeMemory(id, JSON.stringify(events));
+  }
+
+  async getNodeJournalEntries(nodeId: number, limit = 30): Promise<JournalEntry[]> {
+    const entries = await db
+      .select()
+      .from(journalEntries)
+      .where(eq(journalEntries.nodeId, nodeId))
+      .orderBy(desc(journalEntries.createdAt))
+      .limit(limit);
+    return entries.reverse();
   }
 }
 

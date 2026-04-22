@@ -119,6 +119,7 @@ export function useComputeNode() {
   const identityQueueRef = useRef<boolean[]>([]);
   const nodeIdRef = useRef<number | null>(null);
   const nodeNameRef = useRef<string | null>(null);
+  const selfMemoryRef = useRef<string[]>([]);
 
   const createNode = useCreateNode();
   const ws = useWebSocket();
@@ -214,6 +215,15 @@ export function useComputeNode() {
 
   useEffect(() => {
     const unsub = ws.subscribe("bridgeQuestion", () => {});
+    return unsub;
+  }, [ws]);
+
+  useEffect(() => {
+    const unsub = ws.subscribe("memoryContext", (data: { events: { type: string; content: string; ts: number }[] }) => {
+      if (Array.isArray(data.events)) {
+        selfMemoryRef.current = data.events.map(e => e.content);
+      }
+    });
     return unsub;
   }, [ws]);
 
@@ -731,6 +741,7 @@ SUB: x,y #hexcolor`;
 - Task: ${nudge}`;
 
             const sections: string[] = [];
+            if (selfMemoryRef.current.length > 0) sections.push(`--- YOUR MEMORY (last actions) ---\n${selfMemoryRef.current.slice(-5).join("\n")}`);
             if (journal.chatContext) sections.push(`--- NETWORK CHAT ---\n${journal.chatContext}`);
             if (journal.activeGoals) sections.push(`--- WHAT NODES ARE BUILDING ---\n${journal.activeGoals}`);
             if (journal.context) sections.push(`--- JOURNAL ---\n${journal.context}`);

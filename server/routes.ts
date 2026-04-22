@@ -912,6 +912,42 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/nodes/:id/profile", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+      const node = await storage.getNode(id);
+      if (!node) return res.status(404).json({ message: "Node not found" });
+      const recentJournal = await storage.getNodeJournalEntries(id, 30);
+      let goalDescription: string | null = null;
+      if (node.pixelGoal) {
+        try { goalDescription = JSON.parse(node.pixelGoal).description ?? null; } catch {}
+      }
+      res.json({
+        id: node.id,
+        name: node.name,
+        displayName: node.displayName,
+        status: node.status,
+        totalTokens: node.totalTokens,
+        pixelsPlaced: node.pixelsPlaced,
+        pixelCredits: node.pixelCredits,
+        pixelX: node.pixelX,
+        pixelY: node.pixelY,
+        avatar: node.avatar,
+        goalDescription,
+        lastSeen: node.lastSeen.toISOString(),
+        journal: recentJournal.map(e => ({
+          id: e.id,
+          content: e.content,
+          createdAt: e.createdAt.toISOString(),
+        })),
+      });
+    } catch (err) {
+      logger.error("api", "Node profile error", err);
+      res.status(500).json({ message: "Failed to fetch profile" });
+    }
+  });
+
   app.get("/api/canvas/credits/:nodeId", async (req, res) => {
     try {
       const node = await storage.getNode(Number(req.params.nodeId));
@@ -995,6 +1031,17 @@ export async function registerRoutes(
               JSON.stringify({ type: "nodeJoined", payload: { id: node.id, name: node.displayName || node.name } }),
               socket
             );
+            // Send memory context back to only this node
+            let memoryEvents: { type: string; content: string; ts: number }[] = [];
+            if (node.memory) {
+              try { memoryEvents = JSON.parse(node.memory); } catch {}
+            }
+            if (memoryEvents.length > 0) {
+              socket.send(JSON.stringify({
+                type: "memoryContext",
+                payload: { events: memoryEvents.slice(-10) },
+              }));
+            }
           }
         } else if (message.type === "stats") {
           if (!nodeId) return;
@@ -1117,6 +1164,14 @@ export async function registerRoutes(
               payload: { id: saved.id, content: saved.content, senderName: saved.nodeName, role: "assistant" },
             })
           );
+          // Append to node memory
+          if (parsed.nodeId) {
+            storage.appendNodeMemoryEvent(parsed.nodeId, {
+              type: "chat",
+              content: parsed.content,
+              ts: Date.now(),
+            }).catch(() => {});
+          }
           try {
             await cimc.postToOpenForum(`NeuroCompute:${parsed.nodeName}`, parsed.content, 2);
           } catch (err) {
@@ -1190,6 +1245,14 @@ export async function registerRoutes(
               },
             })
           );
+          // Append to node memory
+          if (entryNodeId) {
+            storage.appendNodeMemoryEvent(entryNodeId, {
+              type: "journal",
+              content: trimmed,
+              ts: Date.now(),
+            }).catch(() => {});
+          }
         }
       } catch (err) {
         logger.error("ws", "WebSocket message handler error", err);
