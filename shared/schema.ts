@@ -30,7 +30,7 @@ export const nodes = pgTable("nodes", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   displayName: text("display_name"),
-  patronId: integer("patron_id"),
+  patronId: integer("patron_id").references(() => patrons.id),
   totalTokens: integer("total_tokens").default(0).notNull(),
   tokensSinceLastCredit: integer("tokens_since_last_credit").default(0).notNull(),
   pixelCredits: integer("pixel_credits").default(0).notNull(),

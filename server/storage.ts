@@ -49,7 +49,7 @@ export interface IStorage {
   getPatronByTokenHash(hash: string): Promise<Patron | undefined>;
   getPatronById(id: number): Promise<Patron | undefined>;
   linkNodeToPatron(nodeId: number, patronId: number): Promise<Node>;
-  getPatronLeaderboard(): Promise<PatronLeaderboardEntry[]>;
+  getPatronLeaderboard(period?: 'all' | '7d' | '24h'): Promise<PatronLeaderboardEntry[]>;
   getNetworkStats(): Promise<{ activeAgents: number; totalTokens: number; totalPatrons: number }>;
 }
 
@@ -336,21 +336,41 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getPatronLeaderboard(): Promise<PatronLeaderboardEntry[]> {
+  async getPatronLeaderboard(period: 'all' | '7d' | '24h' = 'all'): Promise<PatronLeaderboardEntry[]> {
+    const cutoff =
+      period === '24h' ? new Date(Date.now() - 24 * 60 * 60 * 1000) :
+      period === '7d'  ? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) :
+      null;
+
+    const tokenExpr = cutoff
+      ? sql<number>`coalesce(sum(${nodes.totalTokens}) filter (where ${nodes.lastSeen} >= ${cutoff}), 0)::int`
+      : sql<number>`coalesce(sum(${nodes.totalTokens}), 0)::int`;
+
+    const pixelExpr = cutoff
+      ? sql<number>`coalesce(sum(${nodes.pixelsPlaced}) filter (where ${nodes.lastSeen} >= ${cutoff}), 0)::int`
+      : sql<number>`coalesce(sum(${nodes.pixelsPlaced}), 0)::int`;
+
+    const agentCountExpr = cutoff
+      ? sql<number>`count(${nodes.id}) filter (where ${nodes.lastSeen} >= ${cutoff})::int`
+      : sql<number>`count(${nodes.id})::int`;
+
     const results = await db
       .select({
         id: patrons.id,
         name: patrons.name,
         createdAt: patrons.createdAt,
-        agentCount: sql<number>`count(${nodes.id})::int`,
+        agentCount: agentCountExpr,
         activeAgents: sql<number>`count(${nodes.id}) filter (where ${nodes.status} = 'computing')::int`,
-        totalTokens: sql<number>`coalesce(sum(${nodes.totalTokens}), 0)::int`,
-        pixelsPlaced: sql<number>`coalesce(sum(${nodes.pixelsPlaced}), 0)::int`,
+        totalTokens: tokenExpr,
+        pixelsPlaced: pixelExpr,
       })
       .from(patrons)
       .leftJoin(nodes, eq(nodes.patronId, patrons.id))
       .groupBy(patrons.id, patrons.name, patrons.createdAt)
-      .orderBy(desc(sql`coalesce(sum(${nodes.totalTokens}), 0)`));
+      .orderBy(desc(cutoff
+        ? sql`coalesce(sum(${nodes.totalTokens}) filter (where ${nodes.lastSeen} >= ${cutoff}), 0)`
+        : sql`coalesce(sum(${nodes.totalTokens}), 0)`
+      ));
     return results;
   }
 

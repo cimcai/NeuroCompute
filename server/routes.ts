@@ -135,11 +135,16 @@ export async function registerRoutes(
   app.post("/api/nodes/:id/link-patron", async (req, res) => {
     try {
       const nodeId = Number(req.params.id);
-      const { patronId } = req.body;
-      if (!patronId || typeof patronId !== "number") {
-        return res.status(400).json({ message: "patronId is required" });
+      const { token } = req.body;
+      if (!token || typeof token !== "string") {
+        return res.status(400).json({ message: "Patron token is required" });
       }
-      const node = await storage.linkNodeToPatron(nodeId, patronId);
+      const tokenHash = createHash("sha256").update(token.trim()).digest("hex");
+      const patron = await storage.getPatronByTokenHash(tokenHash);
+      if (!patron) {
+        return res.status(403).json({ message: "Invalid patron token" });
+      }
+      const node = await storage.linkNodeToPatron(nodeId, patron.id);
       res.json(node);
     } catch (err: any) {
       if (err.message === "Node not found") return res.status(404).json({ message: "Node not found" });
@@ -150,7 +155,9 @@ export async function registerRoutes(
 
   app.get("/api/patrons/leaderboard", async (req, res) => {
     try {
-      const board = await storage.getPatronLeaderboard();
+      const raw = req.query.period as string | undefined;
+      const period: 'all' | '7d' | '24h' = (raw === '7d' || raw === '24h') ? raw : 'all';
+      const board = await storage.getPatronLeaderboard(period);
       res.json(board);
     } catch (err) {
       logger.error("api", "Patron leaderboard error", err);

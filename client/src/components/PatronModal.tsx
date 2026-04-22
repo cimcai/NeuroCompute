@@ -26,7 +26,7 @@ function randomPatronName(): string {
 interface PatronModalProps {
   open: boolean;
   onClaimed: (patronId: number, patronName: string, token: string) => void;
-  onLooked: (patronId: number, patronName: string) => void;
+  onLooked: (patronId: number, patronName: string, token: string) => void;
   onDismiss: () => void;
 }
 
@@ -92,7 +92,7 @@ export function PatronModal({ open, onClaimed, onLooked, onDismiss }: PatronModa
         setError(data.message || "Token not found");
         return;
       }
-      onLooked(data.patron.id, data.patron.name);
+      onLooked(data.patron.id, data.patron.name, returnToken.trim());
       toast({ title: `Welcome back, ${data.patron.name}!`, description: "Your patron identity is restored." });
     } catch {
       setError("Network error — please try again");

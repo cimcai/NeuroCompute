@@ -66,13 +66,15 @@ export default function Dashboard() {
     }
   }, [patronId]);
 
-  // Link node to patron when node is created
+  // Link node to patron when node is created (uses stored token for server-side verification)
   useEffect(() => {
     if (node.nodeId && patronId) {
+      const storedToken = localStorage.getItem(PATRON_TOKEN_KEY);
+      if (!storedToken) return;
       fetch(`/api/nodes/${node.nodeId}/link-patron`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patronId }),
+        body: JSON.stringify({ token: storedToken }),
       }).catch(() => {});
     }
   }, [node.nodeId, patronId]);
@@ -90,19 +92,28 @@ export default function Dashboard() {
       fetch(`/api/nodes/${node.nodeId}/link-patron`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patronId: id }),
+        body: JSON.stringify({ token }),
       }).catch(() => {});
     }
   }, [node.nodeId]);
 
-  const handlePatronLooked = useCallback((id: number, name: string) => {
+  const handlePatronLooked = useCallback((id: number, name: string, token: string) => {
     setPatronId(id);
     setPatronNameState(name);
     localStorage.setItem(PATRON_ID_KEY, String(id));
     localStorage.setItem(PATRON_NAME_KEY, name);
+    localStorage.setItem(PATRON_TOKEN_KEY, token);
     localStorage.removeItem(PATRON_DISMISSED_KEY);
     setShowPatronModal(false);
-  }, []);
+    // Link existing node if any
+    if (node.nodeId) {
+      fetch(`/api/nodes/${node.nodeId}/link-patron`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      }).catch(() => {});
+    }
+  }, [node.nodeId]);
 
   const handlePatronDismiss = useCallback(() => {
     localStorage.setItem(PATRON_DISMISSED_KEY, "1");

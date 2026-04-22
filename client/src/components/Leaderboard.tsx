@@ -24,13 +24,23 @@ function formatTokens(n: number): string {
   return n.toLocaleString();
 }
 
+type Period = 'all' | '7d' | '24h';
+
+const PERIOD_LABELS: Record<Period, string> = {
+  all: 'All time',
+  '7d': '7 days',
+  '24h': '24 hours',
+};
+
 export function Leaderboard() {
   const { data: initialNodes, isLoading } = useNodes();
   const [liveNodes, setLiveNodes] = useState<Node[]>([]);
+  const [period, setPeriod] = useState<Period>('all');
   const ws = useWebSocket();
 
   const patronQuery = useQuery<PatronEntry[]>({
-    queryKey: ["/api/patrons/leaderboard"],
+    queryKey: ["/api/patrons/leaderboard", period],
+    queryFn: () => fetch(`/api/patrons/leaderboard?period=${period}`).then(r => r.json()),
     refetchInterval: 30000,
   });
 
@@ -114,6 +124,22 @@ export function Leaderboard() {
         </TabsList>
 
         <TabsContent value="patrons" className="flex-1 overflow-auto m-0 p-0">
+          <div className="flex gap-1 px-4 py-2 border-b border-white/5">
+            {(Object.keys(PERIOD_LABELS) as Period[]).map(p => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                data-testid={`button-period-${p}`}
+                className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+                  period === p
+                    ? 'bg-primary/20 text-primary border border-primary/30'
+                    : 'text-muted-foreground hover:text-foreground border border-transparent'
+                }`}
+              >
+                {PERIOD_LABELS[p]}
+              </button>
+            ))}
+          </div>
           {patronQuery.isLoading ? (
             <div className="flex justify-center items-center h-32">
               <Activity className="w-6 h-6 text-muted-foreground animate-pulse" />
