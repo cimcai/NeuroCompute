@@ -529,6 +529,8 @@ function WorldRecordsGrid({ records, loading, onPick, currentWorldId, currentBio
   currentWorldId: string;
   currentBiome: string;
 }) {
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+
   // Build a row per preset world, with best record (if any) per biome
   const bestByWorldBiome = new Map<string, LabRecord>();
   if (records) {
@@ -536,6 +538,8 @@ function WorldRecordsGrid({ records, loading, onPick, currentWorldId, currentBio
       bestByWorldBiome.set(`${r.worldId}|${r.biome}`, r);
     }
   }
+
+  const selectedRecord = selectedKey ? bestByWorldBiome.get(selectedKey) ?? null : null;
 
   return (
     <Card className="border-yellow-500/20 bg-yellow-950/5">
@@ -570,17 +574,21 @@ function WorldRecordsGrid({ records, loading, onPick, currentWorldId, currentBio
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {BIOMES.map(b => {
-                      const rec = bestByWorldBiome.get(`${world.id}|${b.id}`);
+                      const key = `${world.id}|${b.id}`;
+                      const rec = bestByWorldBiome.get(key);
                       const isCurrent = isCurrentWorld && currentBiome === b.id;
+                      const isSelected = selectedKey === key;
                       return (
                         <button
                           key={b.id}
-                          onClick={() => onPick(world.id, b.id)}
+                          onClick={() => setSelectedKey(prev => (prev === key ? null : key))}
                           title={rec
-                            ? `${rec.nickname ?? "Anonymous"} — Bio ${rec.biodiversity}/9 · H=${(rec.shannonX100 / 100).toFixed(2)} · ${rec.totalCreatures} creatures · ${rec.ticks} ticks`
-                            : `${b.name} — no runs yet, click to try`}
+                            ? `${rec.nickname ?? "Anonymous"} — Bio ${rec.biodiversity}/9 · click to view snapshot`
+                            : `${b.name} — no runs yet, click to view`}
                           className={`text-[10px] px-1.5 py-1 rounded border transition-colors flex items-center gap-1 ${
-                            isCurrent
+                            isSelected
+                              ? "border-yellow-400/80 bg-yellow-900/40 text-yellow-100 ring-1 ring-yellow-400/40"
+                              : isCurrent
                               ? "border-purple-500/60 bg-purple-950/40 text-purple-200"
                               : rec
                               ? "border-yellow-500/30 bg-yellow-950/15 text-yellow-200/90 hover:border-yellow-500/50"
@@ -606,11 +614,163 @@ function WorldRecordsGrid({ records, loading, onPick, currentWorldId, currentBio
             })}
           </div>
         )}
+
+        {/* Snapshot detail panel */}
+        {selectedKey && (
+          <RecordSnapshotPanel
+            recordKey={selectedKey}
+            record={selectedRecord}
+            onClose={() => setSelectedKey(null)}
+            onLoad={() => {
+              if (!selectedRecord) return;
+              onPick(selectedRecord.worldId, selectedRecord.biome);
+              setSelectedKey(null);
+            }}
+          />
+        )}
+
         <p className="text-[10px] text-muted-foreground/70 pt-1">
-          Click any biome chip to load that world. Numbers are the highest biodiversity (0–9) anyone has achieved with that combination.
+          Click any biome chip to view its champion snapshot. Numbers are the highest biodiversity (0–9) anyone has achieved with that combination.
         </p>
       </CardContent>
     </Card>
+  );
+}
+
+function RecordSnapshotPanel({ recordKey, record, onClose, onLoad }: {
+  recordKey: string;
+  record: LabRecord | null;
+  onClose: () => void;
+  onLoad: () => void;
+}) {
+  const [worldId, biomeId] = recordKey.split("|");
+  const world = PRESET_WORLDS.find(p => p.id === worldId);
+  const biome = BIOMES.find(b => b.id === biomeId);
+  const isSeed = worldId.startsWith("seed-");
+
+  if (!record) {
+    return (
+      <div className="mt-2 p-3 rounded-md border border-white/10 bg-white/2" data-testid="panel-snapshot-empty">
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <p className="text-xs font-medium text-foreground">
+            {world?.emoji ?? "🌱"} {world?.name ?? worldId} · {biome?.emoji ?? ""} {biome?.name ?? biomeId}
+          </p>
+          <button onClick={onClose} className="text-[10px] text-muted-foreground hover:text-foreground" data-testid="button-close-snapshot">✕</button>
+        </div>
+        <p className="text-[11px] text-muted-foreground">No record yet — be the first to set one.</p>
+      </div>
+    );
+  }
+
+  const finalState = record.finalState as Record<string, number>;
+  const speciesEntries = SPECIES.map(s => ({
+    species: s,
+    meta: SPECIES_META[s],
+    count: Number(finalState[s] ?? 0),
+  })).sort((a, b) => b.count - a.count);
+  const maxCount = Math.max(1, ...speciesEntries.map(s => s.count));
+
+  const when = new Date(record.createdAt);
+  const whenStr = when.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <div className="mt-2 p-3 rounded-md border border-yellow-500/30 bg-yellow-950/10 space-y-2" data-testid="panel-snapshot">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-foreground flex items-center gap-1.5">
+            <Crown className="w-3 h-3 text-yellow-400 shrink-0" />
+            <span className="truncate">{world?.emoji ?? "🌱"} {record.worldName}</span>
+            <span className="text-muted-foreground">·</span>
+            <span className="truncate">{biome?.emoji ?? ""} {biome?.name ?? record.biome}</span>
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            <span className="text-yellow-200/90 font-medium">{record.nickname ?? "Anonymous"}</span> · {whenStr}
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="text-[10px] text-muted-foreground hover:text-foreground shrink-0 px-1"
+          data-testid="button-close-snapshot"
+        >✕</button>
+      </div>
+
+      {/* Stat row */}
+      <div className="grid grid-cols-4 gap-1.5 text-center">
+        <div className="p-1.5 rounded bg-yellow-950/30 border border-yellow-500/20">
+          <p className="text-[9px] text-muted-foreground uppercase tracking-wide">Bio</p>
+          <p className="text-sm font-bold text-yellow-200">{record.biodiversity}<span className="text-[10px] text-muted-foreground">/9</span></p>
+        </div>
+        <div className="p-1.5 rounded bg-purple-950/30 border border-purple-500/20">
+          <p className="text-[9px] text-muted-foreground uppercase tracking-wide">Shannon H</p>
+          <p className="text-sm font-bold text-purple-200">{(record.shannonX100 / 100).toFixed(2)}</p>
+        </div>
+        <div className="p-1.5 rounded bg-emerald-950/30 border border-emerald-500/20">
+          <p className="text-[9px] text-muted-foreground uppercase tracking-wide">Creatures</p>
+          <p className="text-sm font-bold text-emerald-200">{record.totalCreatures}</p>
+        </div>
+        <div className="p-1.5 rounded bg-white/3 border border-white/10">
+          <p className="text-[9px] text-muted-foreground uppercase tracking-wide">Ticks</p>
+          <p className="text-sm font-bold text-foreground">{record.ticks}</p>
+        </div>
+      </div>
+
+      {/* Species breakdown */}
+      <div className="space-y-1">
+        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Final population</p>
+        <div className="space-y-0.5">
+          {speciesEntries.map(({ species, meta, count }) => {
+            const pct = (count / maxCount) * 100;
+            const extinct = count <= 0;
+            return (
+              <div key={species} className="flex items-center gap-2" data-testid={`snapshot-species-${species}`}>
+                <span className="text-xs w-4 shrink-0">{meta.emoji}</span>
+                <span className="text-[10px] w-16 shrink-0 text-muted-foreground truncate">{meta.label}</span>
+                <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
+                  <div
+                    className="h-full transition-all"
+                    style={{
+                      width: extinct ? "0%" : `${Math.max(2, pct)}%`,
+                      backgroundColor: meta.color,
+                      opacity: extinct ? 0.2 : 0.85,
+                    }}
+                  />
+                </div>
+                <span className={`text-[10px] font-mono w-10 text-right shrink-0 ${extinct ? "text-muted-foreground/50 italic" : "text-foreground"}`}>
+                  {extinct ? "×" : count.toFixed(count >= 10 ? 0 : 1)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Sim parameters */}
+      <div className="flex flex-wrap gap-1.5 pt-1 border-t border-white/5">
+        <Badge variant="outline" className="text-[9px] py-0 px-1.5 h-4 border-white/15">
+          chaos {(record.weatherChaosX100 / 100).toFixed(2)}
+        </Badge>
+        <Badge variant="outline" className="text-[9px] py-0 px-1.5 h-4 border-white/15">
+          predation {(record.predationX100 / 100).toFixed(2)}
+        </Badge>
+        <Badge variant="outline" className="text-[9px] py-0 px-1.5 h-4 border-white/15">
+          seed {record.rngSeed}
+        </Badge>
+      </div>
+
+      {/* Actions */}
+      <div className="flex justify-end pt-1">
+        {!isSeed && (
+          <Button
+            size="sm"
+            onClick={onLoad}
+            className="h-7 text-[11px] bg-purple-600 hover:bg-purple-500"
+            data-testid="button-load-record"
+          >
+            Load this world
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 
