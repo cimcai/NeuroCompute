@@ -1,10 +1,11 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { ArrowLeft, Leaf, Trees, Globe, Zap, Code2, ExternalLink, Copy, Check, Play, Trophy, Monitor } from "lucide-react";
+import { ArrowLeft, Leaf, Trees, Globe, Zap, Code2, ExternalLink, Copy, Check, Play, Trophy, Monitor, FlaskConical } from "lucide-react";
+import { EcologyLab } from "@/components/EcologyLab";
 
 interface GameScore {
   id: number;
@@ -91,10 +92,28 @@ function buildSnippet(origin: string, patronToken: string | null, regionX: strin
   return lines.join("\n");
 }
 
-type Tab = "play" | "leaderboard" | "connect";
+type Tab = "play" | "leaderboard" | "connect" | "lab";
+
+function readHashTab(): Tab {
+  if (typeof window === "undefined") return "connect";
+  const h = window.location.hash.replace("#", "");
+  if (h === "play" || h === "leaderboard" || h === "connect" || h === "lab") return h;
+  return "connect";
+}
 
 export default function Game() {
-  const [tab, setTab] = useState<Tab>("connect");
+  const [tab, setTabState] = useState<Tab>(readHashTab);
+  const setTab = (t: Tab) => {
+    setTabState(t);
+    if (typeof window !== "undefined" && window.location.hash !== `#${t}`) {
+      window.history.pushState(null, "", `#${t}`);
+    }
+  };
+  useEffect(() => {
+    const onHashChange = () => setTabState(readHashTab());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
   const [copied, setCopied] = useState(false);
   const [llmControl, setLlmControl] = useState(false);
   const [regionX, setRegionX] = useState("");
@@ -156,23 +175,29 @@ export default function Game() {
       {/* Tabs */}
       <div className="border-b border-white/5">
         <div className="max-w-6xl mx-auto px-4 md:px-6 flex gap-1 pt-1">
-          {(["connect", "play", "leaderboard"] as Tab[]).map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-3 py-2 text-xs font-medium rounded-t-md transition-colors border-b-2 -mb-px capitalize flex items-center gap-1.5 ${
-                tab === t
-                  ? "border-green-400 text-green-400 bg-green-950/20"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              data-testid={`tab-${t}`}
-            >
-              {t === "connect" && <Code2 className="w-3 h-3" />}
-              {t === "play" && <Monitor className="w-3 h-3" />}
-              {t === "leaderboard" && <Trophy className="w-3 h-3" />}
-              {t}
-            </button>
-          ))}
+          {(["connect", "play", "lab", "leaderboard"] as Tab[]).map(t => {
+            const isLab = t === "lab";
+            return (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`px-3 py-2 text-xs font-medium rounded-t-md transition-colors border-b-2 -mb-px capitalize flex items-center gap-1.5 ${
+                  tab === t
+                    ? isLab
+                      ? "border-purple-400 text-purple-400 bg-purple-950/20"
+                      : "border-green-400 text-green-400 bg-green-950/20"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+                data-testid={`tab-${t}`}
+              >
+                {t === "connect" && <Code2 className="w-3 h-3" />}
+                {t === "play" && <Monitor className="w-3 h-3" />}
+                {t === "lab" && <FlaskConical className="w-3 h-3" />}
+                {t === "leaderboard" && <Trophy className="w-3 h-3" />}
+                {t}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -315,6 +340,11 @@ export default function Game() {
               Arrow keys to move · <kbd className="bg-white/10 border border-white/15 rounded px-1 font-mono">a</kbd> plant seed · <kbd className="bg-white/10 border border-white/15 rounded px-1 font-mono">e</kbd> submit score · <kbd className="bg-white/10 border border-white/15 rounded px-1 font-mono">w</kbd> autowalk
             </p>
           </div>
+        )}
+
+        {/* ── LAB TAB ── */}
+        {tab === "lab" && (
+          <EcologyLab leaderboardSeeds={data?.topByBiodiversity ?? []} />
         )}
 
         {/* ── LEADERBOARD TAB ── */}
