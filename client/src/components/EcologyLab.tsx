@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Play, Square, RotateCcw, FlaskConical, Trophy, Sparkles } from "lucide-react";
+import { Play, Square, RotateCcw, FlaskConical, Trophy, Sparkles, Crown } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   PRESET_WORLDS, BIOMES, SPECIES, SPECIES_META,
   runSimulation, stateFromScoreRow,
@@ -29,7 +31,35 @@ interface SavedRun {
   timestamp: number;
 }
 
+interface LabRecord {
+  id: number;
+  worldId: string;
+  worldName: string;
+  biome: string;
+  biodiversity: number;
+  shannonX100: number;
+  totalCreatures: number;
+  ticks: number;
+  weatherChaosX100: number;
+  predationX100: number;
+  rngSeed: number;
+  finalState: State;
+  nickname: string | null;
+  createdAt: string;
+}
+
+interface LabRecordsResponse {
+  records: LabRecord[];
+  bestPerWorld: LabRecord[];
+  totalRuns: number;
+}
+
 const STORAGE_KEY = "neurocompute_lab_runs";
+
+function getPatronToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("neurocompute_patronToken") || localStorage.getItem("neurocompute_token") || null;
+}
 
 export function EcologyLab({ leaderboardSeeds }: { leaderboardSeeds: SeedRow[] }) {
   const [presetId, setPresetId] = useState(PRESET_WORLDS[0].id);
@@ -44,8 +74,34 @@ export function EcologyLab({ leaderboardSeeds }: { leaderboardSeeds: SeedRow[] }
   const [snapshots, setSnapshots] = useState<SimSnapshot[]>([]);
   const [savedRuns, setSavedRuns] = useState<SavedRun[]>([]);
   const animRef = useRef<number | null>(null);
+  const cancelledRef = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
-  // Load saved runs
+  // Global world records
+  const recordsQuery = useQuery<LabRecordsResponse>({
+    queryKey: ["/api/game/lab/records"],
+    refetchInterval: 60000,
+  });
+
+  const submitRecord = useMutation({
+    mutationFn: async (payload: {
+      worldId: string; worldName: string; biome: Biome;
+      biodiversity: number; shannon: number; totalCreatures: number;
+      ticks: number; weatherChaos: number; predation: number; rngSeed: number;
+      finalState: State;
+    }) => {
+      return apiRequest("POST", "/api/game/lab/record", {
+        ...payload,
+        patronToken: getPatronToken(),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/game/lab/records"] });
+    },
+  });
+
+  // Load local saved runs
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -80,6 +136,7 @@ export function EcologyLab({ leaderboardSeeds }: { leaderboardSeeds: SeedRow[] }
   }, [seedRowId, presetId, leaderboardSeeds]);
 
   const reset = () => {
+    cancelledRef.current = true;
     if (animRef.current) {
       window.clearInterval(animRef.current);
       animRef.current = null;
@@ -90,6 +147,7 @@ export function EcologyLab({ leaderboardSeeds }: { leaderboardSeeds: SeedRow[] }
 
   const run = () => {
     if (animRef.current) window.clearInterval(animRef.current);
+    cancelledRef.current = false;
 
     const allSnaps = runSimulation(
       { biome, initial: initialState, ticks, weatherChaos: chaos, predationStrength: predation },
@@ -101,11 +159,17 @@ export function EcologyLab({ leaderboardSeeds }: { leaderboardSeeds: SeedRow[] }
 
     let i = 1;
     animRef.current = window.setInterval(() => {
+      if (cancelledRef.current || !mountedRef.current) {
+        if (animRef.current) window.clearInterval(animRef.current);
+        animRef.current = null;
+        return;
+      }
       if (i >= allSnaps.length) {
         if (animRef.current) window.clearInterval(animRef.current);
         animRef.current = null;
         setRunning(false);
         const final = allSnaps[allSnaps.length - 1];
+        const worldId = seedRowId != null ? `seed-${seedRowId}` : presetId;
         const worldLabel = seedRowId != null
           ? (leaderboardSeeds.find(r => r.id === seedRowId)?.nickname ?? "Recorded") + " seed"
           : (PRESET_WORLDS.find(p => p.id === presetId)?.name ?? "Run");
@@ -120,6 +184,20 @@ export function EcologyLab({ leaderboardSeeds }: { leaderboardSeeds: SeedRow[] }
           finalState: final.state,
           timestamp: Date.now(),
         });
+        // Submit to global records (fire-and-forget)
+        submitRecord.mutate({
+          worldId,
+          worldName: worldLabel,
+          biome,
+          biodiversity: final.biodiversity,
+          shannon: final.shannon,
+          totalCreatures: final.totalCreatures,
+          ticks,
+          weatherChaos: chaos,
+          predation,
+          rngSeed: seedRng,
+          finalState: final.state,
+        });
         return;
       }
       setSnapshots(prev => [...prev, allSnaps[i]]);
@@ -128,6 +206,7 @@ export function EcologyLab({ leaderboardSeeds }: { leaderboardSeeds: SeedRow[] }
   };
 
   const stop = () => {
+    cancelledRef.current = true;
     if (animRef.current) {
       window.clearInterval(animRef.current);
       animRef.current = null;
@@ -157,10 +236,25 @@ export function EcologyLab({ leaderboardSeeds }: { leaderboardSeeds: SeedRow[] }
           <p className="text-sm font-medium text-foreground">Ecology Lab</p>
           <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
             Pick a starting world, set the biome and parameters, then run a fast-forward simulation.
-            Watch species rise & fall and see what biodiversity emerges. Recent runs are saved for comparison.
+            Every completed run is recorded — try to set the biodiversity record for each world.
           </p>
         </div>
       </div>
+
+      {/* World Records Grid */}
+      <WorldRecordsGrid
+        records={recordsQuery.data}
+        loading={recordsQuery.isLoading}
+        onPick={(worldId, biome) => {
+          if (worldId.startsWith("seed-")) return; // can't switch to a seed-based world from here
+          setPresetId(worldId);
+          setSeedRowId(null);
+          setBiome(biome as Biome);
+          reset();
+        }}
+        currentWorldId={seedRowId != null ? `seed-${seedRowId}` : presetId}
+        currentBiome={biome}
+      />
 
       <div className="grid lg:grid-cols-[320px_1fr] gap-4">
         {/* Left: controls */}
@@ -425,6 +519,98 @@ export function EcologyLab({ leaderboardSeeds }: { leaderboardSeeds: SeedRow[] }
         </Card>
       )}
     </div>
+  );
+}
+
+function WorldRecordsGrid({ records, loading, onPick, currentWorldId, currentBiome }: {
+  records?: LabRecordsResponse;
+  loading: boolean;
+  onPick: (worldId: string, biome: string) => void;
+  currentWorldId: string;
+  currentBiome: string;
+}) {
+  // Build a row per preset world, with best record (if any) per biome
+  const bestByWorldBiome = new Map<string, LabRecord>();
+  if (records) {
+    for (const r of records.bestPerWorld) {
+      bestByWorldBiome.set(`${r.worldId}|${r.biome}`, r);
+    }
+  }
+
+  return (
+    <Card className="border-yellow-500/20 bg-yellow-950/5">
+      <CardHeader className="pb-2 flex flex-row items-center justify-between">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Crown className="w-4 h-4 text-yellow-400" /> World Records
+        </CardTitle>
+        <span className="text-[10px] text-muted-foreground" data-testid="text-total-runs">
+          {records ? `${records.totalRuns} run${records.totalRuns !== 1 ? "s" : ""} community-wide` : "—"}
+        </span>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {loading && !records ? (
+          <p className="text-xs text-muted-foreground py-2 text-center">Loading records…</p>
+        ) : (
+          <div className="space-y-1.5">
+            {PRESET_WORLDS.map(world => {
+              const isCurrentWorld = currentWorldId === world.id;
+              return (
+                <div
+                  key={world.id}
+                  className={`p-2 rounded-md border transition-colors ${
+                    isCurrentWorld ? "border-purple-500/40 bg-purple-950/20" : "border-white/8 bg-white/2"
+                  }`}
+                  data-testid={`record-row-${world.id}`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-base shrink-0">{world.emoji}</span>
+                      <span className="text-xs font-medium text-foreground truncate">{world.name}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {BIOMES.map(b => {
+                      const rec = bestByWorldBiome.get(`${world.id}|${b.id}`);
+                      const isCurrent = isCurrentWorld && currentBiome === b.id;
+                      return (
+                        <button
+                          key={b.id}
+                          onClick={() => onPick(world.id, b.id)}
+                          title={rec
+                            ? `${rec.nickname ?? "Anonymous"} — Bio ${rec.biodiversity}/9 · H=${(rec.shannonX100 / 100).toFixed(2)} · ${rec.totalCreatures} creatures · ${rec.ticks} ticks`
+                            : `${b.name} — no runs yet, click to try`}
+                          className={`text-[10px] px-1.5 py-1 rounded border transition-colors flex items-center gap-1 ${
+                            isCurrent
+                              ? "border-purple-500/60 bg-purple-950/40 text-purple-200"
+                              : rec
+                              ? "border-yellow-500/30 bg-yellow-950/15 text-yellow-200/90 hover:border-yellow-500/50"
+                              : "border-white/8 bg-white/2 text-muted-foreground/60 hover:border-white/20 hover:text-muted-foreground"
+                          }`}
+                          data-testid={`record-cell-${world.id}-${b.id}`}
+                        >
+                          <span>{b.emoji}</span>
+                          {rec ? (
+                            <>
+                              <span className="font-bold">{rec.biodiversity}</span>
+                              <span className="opacity-60">/9</span>
+                            </>
+                          ) : (
+                            <span className="opacity-50">—</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <p className="text-[10px] text-muted-foreground/70 pt-1">
+          Click any biome chip to load that world. Numbers are the highest biodiversity (0–9) anyone has achieved with that combination.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 

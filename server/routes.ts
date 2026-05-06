@@ -1253,6 +1253,77 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/game/lab/records", gameCors, async (_req, res) => {
+    try {
+      const data = await storage.getLabRecords();
+      res.json(data);
+    } catch (err) {
+      logger.error("api", "Lab records fetch error", err);
+      res.status(500).json({ message: "Failed to fetch lab records" });
+    }
+  });
+
+  app.post("/api/game/lab/record", gameCors, async (req, res) => {
+    try {
+      const {
+        patronToken, nickname, worldId, worldName, biome,
+        biodiversity, shannon, totalCreatures, ticks,
+        weatherChaos, predation, rngSeed, finalState,
+      } = req.body;
+
+      if (!worldId || !worldName || !biome || !finalState) {
+        return res.status(400).json({ message: "worldId, worldName, biome, finalState required" });
+      }
+
+      // Validate finalState shape: must be a plain object with the 9 numeric species fields
+      const SPECIES_KEYS = ["trees", "flowers", "bees", "butterflies", "birds", "bunnies", "foxes", "bears", "buffalos"] as const;
+      if (typeof finalState !== "object" || Array.isArray(finalState) || finalState === null) {
+        return res.status(400).json({ message: "finalState must be a plain object" });
+      }
+      const cleanState: Record<string, number> = {};
+      for (const k of SPECIES_KEYS) {
+        const v = Number((finalState as Record<string, unknown>)[k]);
+        if (!Number.isFinite(v) || v < 0) {
+          return res.status(400).json({ message: `finalState.${k} must be a non-negative number` });
+        }
+        cleanState[k] = Math.min(1000, Math.round(v * 100) / 100);
+      }
+
+      let patronId: number | null = null;
+      let resolvedNick: string | null = nickname ? String(nickname).slice(0, 64) : null;
+      if (patronToken) {
+        const { createHash } = await import("crypto");
+        const hash = createHash("sha256").update(String(patronToken)).digest("hex");
+        const patron = await storage.getPatronByTokenHash(hash);
+        if (patron) {
+          patronId = patron.id;
+          if (!resolvedNick) resolvedNick = patron.displayName ?? null;
+        }
+      }
+
+      const saved = await storage.submitLabRecord({
+        worldId: String(worldId).slice(0, 64),
+        worldName: String(worldName).slice(0, 80),
+        biome: String(biome).slice(0, 32),
+        biodiversity: Math.max(0, Math.min(9, Math.floor(Number(biodiversity) || 0))),
+        shannonX100: Math.max(0, Math.min(500, Math.round((Number(shannon) || 0) * 100))),
+        totalCreatures: Math.max(0, Math.floor(Number(totalCreatures) || 0)),
+        ticks: Math.max(1, Math.min(2000, Math.floor(Number(ticks) || 0))),
+        weatherChaosX100: Math.max(0, Math.min(100, Math.round((Number(weatherChaos) || 0) * 100))),
+        predationX100: Math.max(0, Math.min(500, Math.round((Number(predation) || 1) * 100))),
+        rngSeed: Math.max(0, Math.floor(Number(rngSeed) || 1)),
+        finalState: cleanState,
+        patronId,
+        nickname: resolvedNick,
+      });
+
+      res.json({ ok: true, id: saved.id });
+    } catch (err) {
+      logger.error("api", "Lab record submit error", err);
+      res.status(500).json({ message: "Failed to save lab record" });
+    }
+  });
+
   app.post("/api/game/appleseed/action", gameCors, async (req, res) => {
     try {
       const { gameState } = req.body;

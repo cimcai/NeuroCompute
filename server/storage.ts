@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { nodes, messages, bridgeGames, subPixels, journalEntries, dailySnapshots, patrons, walls, gameScores, getPixelRate, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type SubPixel, type InsertSubPixel, type JournalEntry, type InsertJournalEntry, type DailySnapshot, type InsertDailySnapshot, type Patron, type Wall, type InsertWall, type GameScore, type InsertGameScore } from "@shared/schema";
+import { nodes, messages, bridgeGames, subPixels, journalEntries, dailySnapshots, patrons, walls, gameScores, labRecords, getPixelRate, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type SubPixel, type InsertSubPixel, type JournalEntry, type InsertJournalEntry, type DailySnapshot, type InsertDailySnapshot, type Patron, type Wall, type InsertWall, type GameScore, type InsertGameScore, type LabRecord, type InsertLabRecord } from "@shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 
 export interface PatronLeaderboardEntry {
@@ -68,6 +68,12 @@ export interface IStorage {
     topByBiodiversity: GameScore[];
     regionBestScores: { regionX: number; regionY: number; bestScore: number; bestBio: number; sessions: number }[];
     totalSessions: number;
+  }>;
+  submitLabRecord(data: InsertLabRecord): Promise<LabRecord>;
+  getLabRecords(): Promise<{
+    records: LabRecord[];
+    bestPerWorld: LabRecord[];
+    totalRuns: number;
   }>;
 }
 
@@ -516,6 +522,36 @@ export class DatabaseStorage implements IStorage {
     const regionBestScores = [...regionMap.values()].sort((a, b) => b.bestBio - a.bestBio).slice(0, 20);
 
     return { topByScore, topByBiodiversity, regionBestScores, totalSessions: all.length };
+  }
+
+  async submitLabRecord(data: InsertLabRecord): Promise<LabRecord> {
+    const [created] = await db.insert(labRecords).values(data).returning();
+    return created;
+  }
+
+  async getLabRecords() {
+    const all = await db.select().from(labRecords).orderBy(
+      desc(labRecords.biodiversity),
+      desc(labRecords.shannonX100),
+      desc(labRecords.totalCreatures),
+    );
+    const bestMap = new Map<string, LabRecord>();
+    for (const r of all) {
+      const key = `${r.worldId}|${r.biome}`;
+      const existing = bestMap.get(key);
+      if (
+        !existing ||
+        r.biodiversity > existing.biodiversity ||
+        (r.biodiversity === existing.biodiversity && r.shannonX100 > existing.shannonX100) ||
+        (r.biodiversity === existing.biodiversity && r.shannonX100 === existing.shannonX100 && r.totalCreatures > existing.totalCreatures)
+      ) {
+        bestMap.set(key, r);
+      }
+    }
+    const bestPerWorld = [...bestMap.values()].sort((a, b) =>
+      b.biodiversity - a.biodiversity || b.shannonX100 - a.shannonX100,
+    );
+    return { records: all.slice(0, 100), bestPerWorld, totalRuns: all.length };
   }
 }
 

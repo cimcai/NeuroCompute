@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -171,3 +171,24 @@ export const insertGameScoreSchema = createInsertSchema(gameScores).omit({ id: t
 
 export type GameScore = typeof gameScores.$inferSelect;
 export type InsertGameScore = z.infer<typeof insertGameScoreSchema>;
+
+export const labRecords = pgTable("lab_records", {
+  id: serial("id").primaryKey(),
+  worldId: text("world_id").notNull(),         // preset id (e.g. "primordial") or "custom-{seedRowId}"
+  worldName: text("world_name").notNull(),
+  biome: text("biome").notNull(),
+  biodiversity: integer("biodiversity").notNull().default(0),
+  shannonX100: integer("shannon_x100").notNull().default(0), // Shannon index × 100 (stored as int)
+  totalCreatures: integer("total_creatures").notNull().default(0),
+  ticks: integer("ticks").notNull().default(0),
+  weatherChaosX100: integer("weather_chaos_x100").notNull().default(0),
+  predationX100: integer("predation_x100").notNull().default(100),
+  rngSeed: integer("rng_seed").notNull().default(1),
+  finalState: jsonb("final_state").notNull(),
+  patronId: integer("patron_id").references(() => patrons.id),
+  nickname: text("nickname"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertLabRecordSchema = createInsertSchema(labRecords).omit({ id: true, createdAt: true });
+export type LabRecord = typeof labRecords.$inferSelect;
+export type InsertLabRecord = z.infer<typeof insertLabRecordSchema>;
