@@ -13,7 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Download, Shield, AlertTriangle, Eye, Monitor, MessageSquare, Swords, Users, Radio, User, BookOpen, Film, Key, ChevronDown } from "lucide-react";
+import { Zap, Database, Play, Square, Wifi, WifiOff, Terminal, Download, Shield, AlertTriangle, Eye, Monitor, MessageSquare, Swords, Users, Radio, User, BookOpen, Film, Key, ChevronDown, Leaf } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "wouter";
@@ -208,6 +208,12 @@ export default function Dashboard() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/game">
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-green-400/70 hover:text-green-400" data-testid="link-game">
+              <Leaf className="w-3.5 h-3.5 mr-1" />
+              <span className="hidden sm:inline">Appleseed</span>
+            </Button>
+          </Link>
           <Link href="/reference">
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground" data-testid="link-reference">
               <BookOpen className="w-3.5 h-3.5 mr-1" />

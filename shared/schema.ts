@@ -141,3 +141,33 @@ export const insertWallSchema = createInsertSchema(walls).omit({ id: true, creat
 
 export type Wall = typeof walls.$inferSelect;
 export type InsertWall = z.infer<typeof insertWallSchema>;
+
+export const gameScores = pgTable("game_scores", {
+  id: serial("id").primaryKey(),
+  patronId: integer("patron_id").references(() => patrons.id),
+  nodeId: integer("node_id"),
+  externalUserId: text("external_user_id"),
+  nickname: text("nickname"),
+  score: integer("score").notNull().default(0),
+  biodiversityScore: integer("biodiversity_score").notNull().default(0),
+  livingCreatures: integer("living_creatures").notNull().default(0),
+  eggsCollected: integer("eggs_collected").notNull().default(0),
+  level: integer("level").notNull().default(1),
+  treeCount: integer("tree_count").default(0).notNull(),
+  birdCount: integer("bird_count").default(0).notNull(),
+  bunnyCount: integer("bunny_count").default(0).notNull(),
+  foxCount: integer("fox_count").default(0).notNull(),
+  bearCount: integer("bear_count").default(0).notNull(),
+  buffaloCount: integer("buffalo_count").default(0).notNull(),
+  beeCount: integer("bee_count").default(0).notNull(),
+  butterflyCount: integer("butterfly_count").default(0).notNull(),
+  flowerCount: integer("flower_count").default(0).notNull(),
+  regionX: integer("region_x"),
+  regionY: integer("region_y"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertGameScoreSchema = createInsertSchema(gameScores).omit({ id: true, createdAt: true });
+
+export type GameScore = typeof gameScores.$inferSelect;
+export type InsertGameScore = z.infer<typeof insertGameScoreSchema>;

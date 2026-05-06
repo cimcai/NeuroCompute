@@ -1163,6 +1163,294 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Appleseed Game Integration API (public CORS) ────────────────────────────
+  const gameCors = (_req: any, res: any, next: any) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    next();
+  };
+
+  // Pending game action requests: requestId → { resolve, timer }
+  const pendingGameActions = new Map<string, { resolve: (action: any) => void; timer: ReturnType<typeof setTimeout> }>();
+
+  app.options(/^\/api\/game\//, gameCors, (_req, res) => res.sendStatus(204));
+
+  // Heuristic fallback when no compute node is available
+  function ecologyHeuristic(gs: { trees: number; birds: number; bunnies: number; foxes: number; bears: number; buffalos: number; bees: number; butterflies: number; flowers: number; apples: number; biodiversity: number }) {
+    if (gs.trees < 3) return { action: "plant_seed", reason: "Need more trees for ecosystem foundation" };
+    if (gs.birds === 0 && gs.trees >= 2) return { action: "release_bird", reason: "Birds missing from ecosystem" };
+    if (gs.bunnies === 0) return { action: "release_bunny", reason: "Bunnies increase biodiversity" };
+    if (gs.foxes === 0 && gs.bunnies >= 2) return { action: "release_fox", reason: "Foxes balance bunny population" };
+    if (gs.flowers === 0) return { action: "plant_seed", reason: "Plant flowers for pollinators" };
+    if (gs.bees === 0 && gs.flowers > 0) return { action: "release_bee", reason: "Bees pollinate flowers" };
+    if (gs.butterflies === 0 && gs.flowers > 0) return { action: "release_butterfly", reason: "Butterflies add biodiversity" };
+    if (gs.bears === 0 && gs.trees >= 5) return { action: "release_bear", reason: "Bears complete food chain" };
+    if (gs.buffalos === 0) return { action: "release_bunny", reason: "More herbivores needed" };
+    if (gs.apples >= 10) return { action: "harvest_apples", reason: "Harvest apples for points" };
+    return { action: "plant_seed", reason: "Expanding tree coverage" };
+  }
+
+  app.post("/api/game/appleseed/score", gameCors, async (req, res) => {
+    try {
+      const {
+        patronToken, externalUserId, nickname, score, biodiversityScore, livingCreatures,
+        eggsCollected, level, treeCount, birdCount, bunnyCount, foxCount, bearCount,
+        buffaloCount, beeCount, butterflyCount, flowerCount, regionX, regionY,
+      } = req.body;
+
+      let patronId: number | null = null;
+      let nodeId: number | null = null;
+      if (patronToken) {
+        const { createHash } = await import("crypto");
+        const hash = createHash("sha256").update(String(patronToken)).digest("hex");
+        const patron = await storage.getPatronByTokenHash(hash);
+        if (patron) {
+          patronId = patron.id;
+          const allNodes = await storage.getNodes();
+          const patronNode = allNodes.find(n => n.patronId === patron.id);
+          if (patronNode) nodeId = patronNode.id;
+        }
+      }
+
+      const saved = await storage.submitGameScore({
+        patronId,
+        nodeId,
+        externalUserId: externalUserId || null,
+        nickname: nickname ? String(nickname).slice(0, 64) : null,
+        score: Math.max(0, Math.floor(Number(score) || 0)),
+        biodiversityScore: Math.max(0, Math.min(9, Math.floor(Number(biodiversityScore) || 0))),
+        livingCreatures: Math.max(0, Math.floor(Number(livingCreatures) || 0)),
+        eggsCollected: Math.max(0, Math.floor(Number(eggsCollected) || 0)),
+        level: Math.max(1, Math.floor(Number(level) || 1)),
+        treeCount: Math.max(0, Math.floor(Number(treeCount) || 0)),
+        birdCount: Math.max(0, Math.floor(Number(birdCount) || 0)),
+        bunnyCount: Math.max(0, Math.floor(Number(bunnyCount) || 0)),
+        foxCount: Math.max(0, Math.floor(Number(foxCount) || 0)),
+        bearCount: Math.max(0, Math.floor(Number(bearCount) || 0)),
+        buffaloCount: Math.max(0, Math.floor(Number(buffaloCount) || 0)),
+        beeCount: Math.max(0, Math.floor(Number(beeCount) || 0)),
+        butterflyCount: Math.max(0, Math.floor(Number(butterflyCount) || 0)),
+        flowerCount: Math.max(0, Math.floor(Number(flowerCount) || 0)),
+        regionX: regionX != null ? Math.max(0, Math.min(31, Math.floor(Number(regionX)))) : null,
+        regionY: regionY != null ? Math.max(0, Math.min(31, Math.floor(Number(regionY)))) : null,
+      });
+
+      res.json({ ok: true, id: saved.id, biodiversityScore: saved.biodiversityScore });
+    } catch (err) {
+      logger.error("api", "Appleseed score submit error", err);
+      res.status(500).json({ message: "Failed to save score" });
+    }
+  });
+
+  app.get("/api/game/appleseed/leaderboard", gameCors, async (_req, res) => {
+    try {
+      const data = await storage.getGameLeaderboard();
+      res.json(data);
+    } catch (err) {
+      logger.error("api", "Appleseed leaderboard error", err);
+      res.status(500).json({ message: "Failed to fetch leaderboard" });
+    }
+  });
+
+  app.post("/api/game/appleseed/action", gameCors, async (req, res) => {
+    try {
+      const { gameState } = req.body;
+      if (!gameState || typeof gameState !== "object") {
+        return res.status(400).json({ message: "gameState object required" });
+      }
+
+      const gs = {
+        trees: Math.max(0, Number(gameState.trees) || 0),
+        birds: Math.max(0, Number(gameState.birds) || 0),
+        bunnies: Math.max(0, Number(gameState.bunnies) || 0),
+        foxes: Math.max(0, Number(gameState.foxes) || 0),
+        bears: Math.max(0, Number(gameState.bears) || 0),
+        buffalos: Math.max(0, Number(gameState.buffalos) || 0),
+        bees: Math.max(0, Number(gameState.bees) || 0),
+        butterflies: Math.max(0, Number(gameState.butterflies) || 0),
+        flowers: Math.max(0, Number(gameState.flowers) || 0),
+        apples: Math.max(0, Number(gameState.apples) || 0),
+        level: Math.max(1, Number(gameState.level) || 1),
+        score: Math.max(0, Number(gameState.score) || 0),
+        biodiversity: Math.max(0, Math.min(9, Number(gameState.biodiversity) || 0)),
+        x: gameState.x != null ? Number(gameState.x) : undefined,
+        y: gameState.y != null ? Number(gameState.y) : undefined,
+      };
+
+      // Check for active compute nodes
+      const allNodes = await storage.getNodes();
+      const onlineNodes = allNodes.filter(n => n.status === "online");
+
+      if (onlineNodes.length === 0) {
+        // No live LLM available — use heuristic
+        return res.json({ ...ecologyHeuristic(gs), source: "heuristic" });
+      }
+
+      // Queue to an active compute node
+      const requestId = `game_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+      const actionPromise = new Promise<any>((resolve) => {
+        const timer = setTimeout(() => {
+          pendingGameActions.delete(requestId);
+          resolve({ ...ecologyHeuristic(gs), source: "timeout_heuristic" });
+        }, 4000);
+        pendingGameActions.set(requestId, { resolve, timer });
+      });
+
+      broadcastAll(JSON.stringify({ type: "gameActionRequest", payload: { requestId, gameState: gs } }));
+
+      const result = await actionPromise;
+      res.json(result);
+    } catch (err) {
+      logger.error("api", "Appleseed action error", err);
+      res.status(500).json({ message: "Failed to get action" });
+    }
+  });
+
+  // Serve the integration script
+  app.get("/game/neurocompute-appleseed.js", (_req, res) => {
+    res.setHeader("Content-Type", "application/javascript");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "public, max-age=300");
+    const origin = `${_req.protocol}://${_req.get("host")}`;
+    res.send(`/* NeuroCompute × Appleseed integration v1.0 */
+(function() {
+  var NC_ORIGIN = "${origin}";
+  var patronToken = window.ncPatronToken || localStorage.getItem("neurocompute_token") || null;
+  var regionX = window.ncRegionX != null ? window.ncRegionX : null;
+  var regionY = window.ncRegionY != null ? window.ncRegionY : null;
+  var llmControl = window.ncLLMControl === true;
+
+  // --- Score submission overlay ---
+  function createOverlay() {
+    if (document.getElementById("nc-overlay")) return;
+    var el = document.createElement("div");
+    el.id = "nc-overlay";
+    el.style.cssText = "position:fixed;bottom:10px;left:10px;z-index:9999;background:rgba(0,0,0,0.85);border:1px solid #00ff88;border-radius:6px;padding:8px 12px;font-family:monospace;font-size:10px;color:#00ff88;min-width:180px;";
+    var linked = patronToken ? "Patron linked ✓" : '<a href="#" id="nc-link-btn" style="color:#ff8">Link patron token</a>';
+    el.innerHTML = '<b style="color:#fff">NeuroCompute</b><br>' + linked + (llmControl ? "<br>🤖 LLM control: ON" : "") + '<div id="nc-status" style="color:#aaa;margin-top:4px;font-size:9px;">Ready</div>';
+    document.body.appendChild(el);
+    var btn = document.getElementById("nc-link-btn");
+    if (btn) btn.addEventListener("click", function(e) {
+      e.preventDefault();
+      var tok = prompt("Paste your NeuroCompute patron token:");
+      if (tok && tok.trim()) {
+        patronToken = tok.trim();
+        localStorage.setItem("neurocompute_token", patronToken);
+        el.innerHTML = '<b style="color:#fff">NeuroCompute</b><br>Patron linked ✓<div id="nc-status" style="color:#aaa;margin-top:4px;font-size:9px;">Ready</div>';
+      }
+    });
+  }
+
+  function setStatus(msg) {
+    var s = document.getElementById("nc-status");
+    if (s) s.textContent = msg;
+  }
+
+  // --- Hook score submission ---
+  var origSave = window.saveAndSubmitScore;
+  window.saveAndSubmitScore = function() {
+    if (origSave) origSave.apply(this, arguments);
+    try {
+      var trees = window.trees ? window.trees.length : 0;
+      var birds = window.birds ? window.birds.length : 0;
+      var bunnies = window.bunnies ? window.bunnies.length : 0;
+      var foxes = window.foxes ? window.foxes.length : 0;
+      var bears = window.bears ? window.bears.length : 0;
+      var buffalos = window.buffalos ? window.buffalos.length : 0;
+      var bees = window.bees ? window.bees.length : 0;
+      var butterflies = window.butterflies ? window.butterflies.length : 0;
+      var flowers = window.flowers ? window.flowers.length : 0;
+      var score = (window.updateScore ? window.updateScore() : 0) || 0;
+      var bio = [trees,birds,bunnies,foxes,buffalos,bears,bees,butterflies,flowers].filter(function(n){return n>0;}).length;
+      var payload = {
+        patronToken: patronToken,
+        externalUserId: window.userId || null,
+        nickname: window.userNickname || "Appleseed Player",
+        score: score,
+        biodiversityScore: bio,
+        livingCreatures: trees+birds+bunnies+foxes+bears+buffalos+bees+butterflies+flowers,
+        eggsCollected: window.eggCollectedCount || 0,
+        level: window.level || 1,
+        treeCount: trees, birdCount: birds, bunnyCount: bunnies, foxCount: foxes,
+        bearCount: bears, buffaloCount: buffalos, beeCount: bees, butterflyCount: butterflies, flowerCount: flowers,
+        regionX: regionX, regionY: regionY
+      };
+      setStatus("Submitting to NeuroCompute...");
+      fetch(NC_ORIGIN + "/api/game/appleseed/score", {
+        method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload)
+      }).then(function(r){ return r.json(); }).then(function(d){
+        setStatus("Submitted! Bio " + (d.biodiversityScore || bio) + "/9");
+      }).catch(function(){ setStatus("Submit failed"); });
+    } catch(e) { console.warn("[NC] Score hook error:", e); }
+  };
+
+  // --- LLM agent control ---
+  var actionPollTimer = null;
+  function getAction() {
+    if (!llmControl) return;
+    try {
+      var trees = window.trees ? window.trees.length : 0;
+      var birds = window.birds ? window.birds.length : 0;
+      var bunnies = window.bunnies ? window.bunnies.length : 0;
+      var foxes = window.foxes ? window.foxes.length : 0;
+      var bears = window.bears ? window.bears.length : 0;
+      var buffalos = window.buffalos ? window.buffalos.length : 0;
+      var bees = window.bees ? window.bees.length : 0;
+      var butterflies = window.butterflies ? window.butterflies.length : 0;
+      var flowers = window.flowers ? window.flowers.length : 0;
+      var score = 0; try { score = window.updateScore ? window.updateScore() : 0; } catch(e){}
+      var bio = [trees,birds,bunnies,foxes,buffalos,bears,bees,butterflies,flowers].filter(function(n){return n>0;}).length;
+      var gameState = {
+        trees:trees, birds:birds, bunnies:bunnies, foxes:foxes, bears:bears, buffalos:buffalos,
+        bees:bees, butterflies:butterflies, flowers:flowers,
+        apples: window.appleCount || 0, level: window.level || 1,
+        score: score, biodiversity: bio,
+        x: window.character ? window.character.x : null,
+        y: window.character ? window.character.y : null
+      };
+      setStatus("Asking LLM...");
+      fetch(NC_ORIGIN + "/api/game/appleseed/action", {
+        method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({gameState: gameState})
+      }).then(function(r){ return r.json(); }).then(function(d){
+        setStatus("LLM: " + d.action + (d.reason ? " (" + d.reason.slice(0,30) + ")" : ""));
+        executeAction(d);
+      }).catch(function(){ setStatus("Action fetch failed"); });
+    } catch(e) { console.warn("[NC] Action poll error:", e); }
+  }
+
+  function executeAction(d) {
+    try {
+      var action = (d.action || "").toLowerCase().trim();
+      if (action === "plant_seed" && window.plantSeed) { window.plantSeed(); }
+      else if (action === "release_bird" && window.releaseBird) { window.releaseBird(); }
+      else if (action === "release_bunny" && window.releaseBunny) { window.releaseBunny(); }
+      else if (action === "release_fox" && window.releaseFox) { window.releaseFox(); }
+      else if (action === "release_bear" && window.releaseBear) { window.releaseBear(); }
+      else if (action === "release_bee" && window.releaseBee) { window.releaseBee(); }
+      else if (action === "release_butterfly" && window.releaseButterfly) { window.releaseButterfly(); }
+      else if (action === "harvest_apples" && window.harvestApples) { window.harvestApples(); }
+      else if (action === "move" && window.character && d.x != null && d.y != null) {
+        window.character.x = d.x; window.character.y = d.y;
+      }
+    } catch(e) { console.warn("[NC] Execute action error:", e); }
+  }
+
+  if (llmControl) {
+    actionPollTimer = setInterval(getAction, 8000);
+  }
+
+  if (document.readyState === "complete" || document.readyState === "interactive") {
+    setTimeout(createOverlay, 500);
+  } else {
+    document.addEventListener("DOMContentLoaded", function() { setTimeout(createOverlay, 500); });
+  }
+
+  console.log("[NeuroCompute] Appleseed integration loaded. Patron:", patronToken ? "linked" : "not linked", "| LLM control:", llmControl);
+})();`);
+  });
+
   // ─── World Map API (public, CORS-enabled for third-party game access) ───────
   const worldCors = (_req: any, res: any, next: any) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -1602,6 +1890,15 @@ export async function registerRoutes(
             } catch (err) {
               logger.error("ws", "subPixelGoalResponse placement error", err);
             }
+          }
+        } else if (message.type === "gameActionResponse") {
+          const { requestId, action, x, y, reason, nodeName: respNodeName } = message.payload || {};
+          if (!requestId || !action) return;
+          const pending = pendingGameActions.get(requestId);
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingGameActions.delete(requestId);
+            pending.resolve({ action, x, y, reason, source: "llm", nodeName: respNodeName });
           }
         } else if (message.type === "journalEntry") {
           const { content, nodeName, nodeId: entryNodeId } = message.payload;

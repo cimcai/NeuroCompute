@@ -115,6 +115,7 @@ export function useComputeNode() {
   const pixelObservationQueueRef = useRef<{ placerName: string; x: number; y: number; colorName: string; goalDescription?: string | null }[]>([]);
   const goalQueueRef = useRef<{ nodeId: number; currentX: number; currentY: number; credits: number; nearbyColors: string; suggestedBiome?: { description: string; color: string; biomeId: string | null; biomeName: string | null; biomeEmoji: string | null } | null; availableBiomes?: { id: string; name: string; color: string; emoji: string; description: string }[] }[]>([]);
   const subPixelGoalQueueRef = useRef<{ regionX: number; regionY: number; macroColor: string; macroColorName: string; existingSubPixels: { subX: number; subY: number; color: string; nodeName: string }[]; creditsLeft: number; goalDescription?: string | null }[]>([]);
+  const gameActionQueueRef = useRef<{ requestId: string; gameState: { trees: number; birds: number; bunnies: number; foxes: number; bears: number; buffalos: number; bees: number; butterflies: number; flowers: number; apples: number; level: number; score: number; biodiversity: number; x?: number; y?: number } }[]>([]);
   const avatarQueueRef = useRef<boolean[]>([]);
   const identityQueueRef = useRef<boolean[]>([]);
   const nodeIdRef = useRef<number | null>(null);
@@ -258,6 +259,15 @@ export function useComputeNode() {
     const unsub = ws.subscribe("subPixelGoalRequest", (data: { regionX: number; regionY: number; macroColor: string; macroColorName: string; existingSubPixels: { subX: number; subY: number; color: string; nodeName: string }[]; creditsLeft: number; goalDescription?: string | null }) => {
       if (isRunningRef.current && engineRef.current) {
         subPixelGoalQueueRef.current.push(data);
+      }
+    });
+    return unsub;
+  }, [ws]);
+
+  useEffect(() => {
+    const unsub = ws.subscribe("gameActionRequest", (data: { requestId: string; gameState: { trees: number; birds: number; bunnies: number; foxes: number; bears: number; buffalos: number; bees: number; butterflies: number; flowers: number; apples: number; level: number; score: number; biodiversity: number; x?: number; y?: number } }) => {
+      if (isRunningRef.current && engineRef.current) {
+        gameActionQueueRef.current.push(data);
       }
     });
     return unsub;
@@ -601,6 +611,91 @@ SUB: x,y #hexcolor`;
               });
             }
           }
+          continue;
+        }
+
+        const gameActionTask = gameActionQueueRef.current.shift();
+        if (gameActionTask && engineRef.current) {
+          const gs = gameActionTask.gameState;
+          const present: string[] = [];
+          if (gs.trees > 0) present.push(`${gs.trees} trees`);
+          if (gs.birds > 0) present.push(`${gs.birds} birds`);
+          if (gs.bunnies > 0) present.push(`${gs.bunnies} bunnies`);
+          if (gs.foxes > 0) present.push(`${gs.foxes} foxes`);
+          if (gs.bears > 0) present.push(`${gs.bears} bears`);
+          if (gs.buffalos > 0) present.push(`${gs.buffalos} buffalo`);
+          if (gs.bees > 0) present.push(`${gs.bees} bees`);
+          if (gs.butterflies > 0) present.push(`${gs.butterflies} butterflies`);
+          if (gs.flowers > 0) present.push(`${gs.flowers} flowers`);
+
+          const gamePrompt = `You are an AI ecologist managing a Johnny Appleseed ecosystem simulation.
+
+Current ecosystem state (Level ${gs.level}):
+- Living creatures: ${present.length ? present.join(", ") : "none yet"}
+- Apples: ${gs.apples}
+- Biodiversity score: ${gs.biodiversity}/9 species types
+- Ecosystem score: ${gs.score}
+- Your position: ${gs.x != null ? `(${gs.x}, ${gs.y})` : "center of map"}
+
+AVAILABLE ACTIONS (pick exactly one):
+- plant_seed — plant a tree seed at your current position or nearby
+- release_bird — release a bird (requires trees)
+- release_bunny — add a bunny to the ecosystem
+- release_fox — add a fox (requires bunnies)
+- release_bear — add a bear (requires trees + other animals)
+- release_bee — add bees (requires flowers)
+- release_butterfly — add butterflies (requires flowers)
+- harvest_apples — collect ripe apples
+- move x,y — move to absolute position
+
+Your goal: MAXIMIZE BIODIVERSITY. Prefer releasing species types not yet present. If trees < 3, plant a seed. If biodiversity < 5 and enough trees, release a new animal type.
+
+Respond in EXACTLY this format:
+ACTION: [action name]
+REASON: [one sentence, 10 words max]`;
+
+          let gameResponse = "";
+          try {
+            const gStream = await engineRef.current.chat.completions.create({
+              messages: [
+                { role: "system", content: "You are an AI ecologist making decisions in an ecosystem simulation. Output only ACTION: and REASON: lines. No thinking tags. Be decisive." },
+                { role: "user", content: gamePrompt },
+              ],
+              stream: true,
+              max_tokens: 60,
+              temperature: 0.8,
+            });
+
+            for await (const chunk of gStream) {
+              if (!isRunningRef.current) break;
+              const content = chunk.choices[0]?.delta?.content || "";
+              gameResponse += content;
+              setSessionTokens((prev) => prev + 1);
+              tokensSinceLastTickRef.current += 1;
+            }
+          } catch {}
+
+          const actionMatch = gameResponse.match(/ACTION:\s*(\S+(?:\s+[-\d,]+)?)/i);
+          const reasonMatch = gameResponse.match(/REASON:\s*(.+)/i);
+          const rawAction = actionMatch?.[1]?.trim() || "plant_seed";
+          const reason = reasonMatch?.[1]?.trim() || "";
+
+          let action = rawAction;
+          let moveX: number | undefined;
+          let moveY: number | undefined;
+          if (rawAction.toLowerCase().startsWith("move")) {
+            const coords = rawAction.match(/(\d+)\s*,\s*(\d+)/);
+            if (coords) { moveX = parseInt(coords[1]); moveY = parseInt(coords[2]); action = "move"; }
+          }
+
+          ws.emit("gameActionResponse", {
+            requestId: gameActionTask.requestId,
+            action,
+            x: moveX,
+            y: moveY,
+            reason,
+            nodeName: nodeNameRef.current || "NeuroNode",
+          });
           continue;
         }
 

@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { nodes, messages, bridgeGames, subPixels, journalEntries, dailySnapshots, patrons, walls, getPixelRate, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type SubPixel, type InsertSubPixel, type JournalEntry, type InsertJournalEntry, type DailySnapshot, type InsertDailySnapshot, type Patron, type Wall, type InsertWall } from "@shared/schema";
+import { nodes, messages, bridgeGames, subPixels, journalEntries, dailySnapshots, patrons, walls, gameScores, getPixelRate, type Node, type InsertNode, type Message, type InsertMessage, type BridgeGame, type InsertBridgeGame, type SubPixel, type InsertSubPixel, type JournalEntry, type InsertJournalEntry, type DailySnapshot, type InsertDailySnapshot, type Patron, type Wall, type InsertWall, type GameScore, type InsertGameScore } from "@shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 
 export interface PatronLeaderboardEntry {
@@ -62,6 +62,13 @@ export interface IStorage {
   moveWall(id: number, x: number, y: number): Promise<Wall>;
   deleteWall(id: number): Promise<void>;
   transferEnergy(fromNodeId: number, toNodeId: number, amount: number): Promise<{ from: Node; to: Node }>;
+  submitGameScore(data: InsertGameScore): Promise<GameScore>;
+  getGameLeaderboard(): Promise<{
+    topByScore: GameScore[];
+    topByBiodiversity: GameScore[];
+    regionBestScores: { regionX: number; regionY: number; bestScore: number; bestBio: number; sessions: number }[];
+    totalSessions: number;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -479,6 +486,36 @@ export class DatabaseStorage implements IStorage {
     const [updatedFrom] = await db.update(nodes).set({ pixelCredits: from.pixelCredits - amount }).where(eq(nodes.id, fromNodeId)).returning();
     const [updatedTo] = await db.update(nodes).set({ pixelCredits: to.pixelCredits + amount }).where(eq(nodes.id, toNodeId)).returning();
     return { from: updatedFrom, to: updatedTo };
+  }
+
+  async submitGameScore(data: InsertGameScore): Promise<GameScore> {
+    const [created] = await db.insert(gameScores).values(data).returning();
+    return created;
+  }
+
+  async getGameLeaderboard() {
+    const all = await db.select().from(gameScores).orderBy(desc(gameScores.score));
+    const topByScore = all.slice(0, 10);
+    const topByBiodiversity = [...all]
+      .sort((a, b) => b.biodiversityScore - a.biodiversityScore || b.score - a.score)
+      .slice(0, 10);
+
+    const regionMap = new Map<string, { regionX: number; regionY: number; bestScore: number; bestBio: number; sessions: number }>();
+    for (const row of all) {
+      if (row.regionX == null || row.regionY == null) continue;
+      const key = `${row.regionX},${row.regionY}`;
+      const existing = regionMap.get(key);
+      if (!existing) {
+        regionMap.set(key, { regionX: row.regionX, regionY: row.regionY, bestScore: row.score, bestBio: row.biodiversityScore, sessions: 1 });
+      } else {
+        existing.bestScore = Math.max(existing.bestScore, row.score);
+        existing.bestBio = Math.max(existing.bestBio, row.biodiversityScore);
+        existing.sessions++;
+      }
+    }
+    const regionBestScores = [...regionMap.values()].sort((a, b) => b.bestBio - a.bestBio).slice(0, 20);
+
+    return { topByScore, topByBiodiversity, regionBestScores, totalSessions: all.length };
   }
 }
 

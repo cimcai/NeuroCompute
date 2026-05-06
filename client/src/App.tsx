@@ -7,6 +7,7 @@ import { useCanvasFavicon } from "@/hooks/use-canvas-favicon";
 import Dashboard from "./pages/Dashboard";
 import Reference from "./pages/Reference";
 import AgentProfile from "./pages/AgentProfile";
+import Game from "./pages/Game";
 import NotFound from "./pages/not-found";
 
 function Router() {
@@ -15,6 +16,7 @@ function Router() {
       <Route path="/" component={Dashboard}/>
       <Route path="/reference" component={Reference}/>
       <Route path="/node/:id" component={AgentProfile}/>
+      <Route path="/game" component={Game}/>
       <Route component={NotFound} />
     </Switch>
   );
