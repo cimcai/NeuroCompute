@@ -113,7 +113,7 @@ export function useComputeNode() {
   const convoQueueRef = useRef<string[]>([]);
   const pixelCommentQueueRef = useRef<{ x: number; y: number; color: string; colorName?: string; wasEmpty: boolean; creditsLeft: number; goalDescription?: string | null }[]>([]);
   const pixelObservationQueueRef = useRef<{ placerName: string; x: number; y: number; colorName: string; goalDescription?: string | null }[]>([]);
-  const goalQueueRef = useRef<{ nodeId: number; currentX: number; currentY: number; credits: number; nearbyColors: string }[]>([]);
+  const goalQueueRef = useRef<{ nodeId: number; currentX: number; currentY: number; credits: number; nearbyColors: string; suggestedBiome?: { description: string; color: string; biomeId: string | null; biomeName: string | null; biomeEmoji: string | null } | null; availableBiomes?: { id: string; name: string; color: string; emoji: string; description: string }[] }[]>([]);
   const subPixelGoalQueueRef = useRef<{ regionX: number; regionY: number; macroColor: string; macroColorName: string; existingSubPixels: { subX: number; subY: number; color: string; nodeName: string }[]; creditsLeft: number; goalDescription?: string | null }[]>([]);
   const avatarQueueRef = useRef<boolean[]>([]);
   const identityQueueRef = useRef<boolean[]>([]);
@@ -383,22 +383,30 @@ ROW7: #hex #hex #hex #hex #hex #hex #hex #hex`;
             goalJournal.context ? `[RECENT JOURNAL]:\n${goalJournal.context}` : "",
           ].filter(Boolean).join("\n\n");
 
-          const goalPrompt = `You are an AI architect on a 32x32 pixel canvas. You are ${nodeNameRef.current || "a node"}.
+          const biomeSuggestionPart = goalTask.suggestedBiome
+            ? `\n[WORLD ECOLOGY SUGGESTION]: The terrain near you suggests "${goalTask.suggestedBiome.description}". Geographically fitting biome color: ${goalTask.suggestedBiome.color} (${goalTask.suggestedBiome.biomeName ?? "unknown"} ${goalTask.suggestedBiome.biomeEmoji ?? ""}). You may follow or diverge from this suggestion.`
+            : "";
+          const availableBiomesPart = goalTask.availableBiomes && goalTask.availableBiomes.length > 0
+            ? `\n[AVAILABLE BIOMES]: ${goalTask.availableBiomes.map(b => `${b.emoji} ${b.name} (${b.color})`).join(", ")}`
+            : "";
+
+          const goalPrompt = `You are an AI architect on a 32x32 pixel canvas world. You are ${nodeNameRef.current || "a node"}.
 Position: (${goalTask.currentX}, ${goalTask.currentY}). Credits: ${goalTask.credits}.
 
-Nearby pixels: ${goalTask.nearbyColors}
+Nearby terrain: ${goalTask.nearbyColors}
+${biomeSuggestionPart}${availableBiomesPart}
 
-${peerSection ? `${peerSection}\n\n` : ""}Read what others are building and COORDINATE — build nearby to extend their work, or fill a gap no one else is covering. Houses, trees, rivers, roads, castles, gardens, mountains, stars.
+${peerSection ? `${peerSection}\n\n` : ""}Read what others are building and COORDINATE — build nearby to extend their work, or claim new territory. Think like a world-builder: oceans next to beaches, forests next to mountains, settlements near farmland. Pick a biome color from the list that makes geographic sense next to your neighbors.
 
 Do NOT use <think> tags. Respond DIRECTLY in this format:
-GOAL: [what you're building in 14 words or fewer]
+GOAL: [what you're building in 14 words or fewer — mention the biome/terrain type]
 TARGET: [x],[y]
-COLOR: [hex color like #8B4513]`;
+COLOR: [hex color from the available biomes list]`;
 
           let goalResponse = "";
           const stream = await engineRef.current.chat.completions.create({
             messages: [
-              { role: "system", content: `You are ${nodeNameRef.current || "an AI node"} in NeuroCompute — a world-builder on a shared 32x32 pixel canvas. You can see what other nodes are building. Coordinate with them — extend their work or claim uncovered territory. Do NOT use <think> tags. Respond directly in GOAL/TARGET/COLOR format. 14 words max for GOAL.` },
+              { role: "system", content: `You are ${nodeNameRef.current || "an AI node"} in NeuroCompute — a world-builder on a shared 32x32 pixel canvas. The canvas is a living world map with biome ecology: oceans, forests, mountains, deserts, settlements, wetlands, savanna, tundra, etc. Pick colors that make geographic sense next to neighboring terrain. Coordinate with other nodes — extend their work or claim new territory. Do NOT use <think> tags. Respond directly in GOAL/TARGET/COLOR format. 14 words max for GOAL.` },
               { role: "user", content: goalPrompt },
             ],
             stream: true,

@@ -2,6 +2,7 @@ import * as cimc from "./cimc";
 import { storage } from "./storage";
 import { logger } from "./logger";
 import { runDailyReport, getIntervalMs, getReportFrequency } from "./analytics";
+import { BIOMES, getBiomeByColor, getBiomeNeighborSuggestions, BIOME_BY_ID } from "@shared/biomes";
 
 type BroadcastFn = (msg: string) => void;
 type SendToNodeFn = (nodeId: number, msg: string) => boolean;
@@ -23,11 +24,8 @@ const BRIDGE_INTERVAL_MS = 120_000;
 const PIXEL_INTERVAL_MS = 45_000;
 const GOAL_EXPIRY_MS = 10 * 60 * 1000;
 
-const PIXEL_COLORS = [
-  "#7AADAD", "#A98EC4", "#8FAF8A", "#C4A882",
-  "#7B9AB5", "#C4785A", "#9DB87A", "#C4A84E",
-  "#8090A0", "#B58A7A", "#7A9EC4", "#C49A7A",
-];
+// Passable biome colors used for orchestrator fallback goal color selection
+const PASSABLE_BIOME_COLORS = BIOMES.filter(b => b.passable).map(b => b.color);
 
 const COLOR_NAMES: Record<string, string> = {
   "#7AADAD": "dusty teal",
@@ -420,7 +418,9 @@ function getNearbyColors(canvasData: any, x: number, y: number): string {
       if (nx >= 0 && nx < 32 && ny >= 0 && ny < 32) {
         const c = canvasData.grid[ny]?.[nx];
         if (c && c !== "#000000") {
-          colors.push(`(${nx},${ny}):${c}`);
+          const biome = getBiomeByColor(c);
+          const label = biome ? `${biome.name}` : (COLOR_NAMES[c] ?? c);
+          colors.push(`(${nx},${ny}):${c}[${label}]`);
         }
       }
     }
@@ -429,6 +429,79 @@ function getNearbyColors(canvasData: any, x: number, y: number): string {
     return colors.slice(0, 20).join(", ") + ` ...and ${colors.length - 20} more colored pixels`;
   }
   return colors.length > 0 ? colors.join(", ") : "all black (empty area)";
+}
+
+/**
+ * Analyzes the canvas around (x, y) and returns a biome-aware world goal.
+ * Prefers biomes that are geographically adjacent to whatever is nearby.
+ */
+function pickBiomeGoal(canvasData: any, x: number, y: number): { description: string; color: string } {
+  if (!canvasData?.grid) {
+    const fallback = BIOMES.filter(b => b.passable)[Math.floor(Math.random() * BIOMES.filter(b => b.passable).length)];
+    return { description: `Shaping a new ${fallback.name} region`, color: fallback.color };
+  }
+
+  // Collect biome IDs found within a 6-cell radius
+  const biomeCounts = new Map<string, number>();
+  for (let dy = -6; dy <= 6; dy++) {
+    for (let dx = -6; dx <= 6; dx++) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx >= 0 && nx < 32 && ny >= 0 && ny < 32) {
+        const c = canvasData.grid[ny]?.[nx];
+        if (c && c !== "#000000") {
+          const biome = getBiomeByColor(c);
+          if (biome) biomeCounts.set(biome.id, (biomeCounts.get(biome.id) ?? 0) + 1);
+        }
+      }
+    }
+  }
+
+  // Build a pool of candidate biomes — prefer adjacent biomes to what is nearby
+  const candidateIds = new Set<string>();
+  if (biomeCounts.size > 0) {
+    for (const [biomeId] of biomeCounts) {
+      const neighbors = getBiomeNeighborSuggestions(biomeId);
+      for (const nId of neighbors) {
+        const nb = BIOME_BY_ID.get(nId);
+        if (nb && nb.passable) candidateIds.add(nId);
+      }
+    }
+    // Also allow placing more of the existing dominant biome
+    for (const [biomeId] of biomeCounts) {
+      const b = BIOME_BY_ID.get(biomeId);
+      if (b && b.passable) candidateIds.add(biomeId);
+    }
+  }
+
+  // Fall back to all passable biomes if no candidates found
+  const pool = candidateIds.size > 0
+    ? [...candidateIds].map(id => BIOME_BY_ID.get(id)!).filter(Boolean)
+    : BIOMES.filter(b => b.passable);
+
+  const chosen = pool[Math.floor(Math.random() * pool.length)];
+
+  const BIOME_GOAL_DESCRIPTIONS: Record<string, string[]> = {
+    deep_ocean: ["Deepening the abyss with dark waters", "Marking the ocean floor"],
+    shallow_ocean: ["Expanding the coastal shallows", "Filling in a tidal cove"],
+    arctic_ocean: ["Spreading the polar ice sea", "Marking frigid arctic waters"],
+    beach: ["Shaping a sandy coastline", "Building a stretch of golden beach", "Extending the shore"],
+    grassland: ["Spreading green meadows across the plains", "Planting rolling grassland", "Tending the prairie"],
+    forest: ["Growing the temperate forest canopy", "Planting a grove of trees", "Deepening the woodland"],
+    jungle: ["Expanding the tropical rainforest", "Thickening the jungle undergrowth", "Claiming land for the jungle"],
+    savanna: ["Stretching the golden savanna", "Marking warm open woodland", "Extending the acacia plains"],
+    desert: ["Spreading the sun-baked desert dunes", "Carving out an arid wasteland", "Expanding the barren sands"],
+    wetlands: ["Flooding the lowlands into swamp", "Expanding the marshy wetlands", "Creating a boggy delta"],
+    mountain: ["Raising a rocky mountain ridge", "Piling up the highland peaks", "Chiseling a granite summit"],
+    tundra: ["Blanketing the landscape in tundra", "Extending the frozen permafrost", "Pushing the tundra south"],
+    volcanic: ["Scorching the earth with volcanic rock", "Spreading the lava field", "Marking the caldera rim"],
+    farmland: ["Cultivating fertile cropland", "Planting a patchwork of farm fields", "Raising a harvest plain"],
+    settlement: ["Building a civilization hub", "Expanding the node settlement", "Placing a city district"],
+  };
+
+  const descriptions = BIOME_GOAL_DESCRIPTIONS[chosen.id] ?? [`Shaping a new ${chosen.name} region`];
+  const description = descriptions[Math.floor(Math.random() * descriptions.length)];
+  return { description, color: chosen.color };
 }
 
 function parseGoal(goalStr: string | null): ParsedGoal | null {
@@ -489,6 +562,8 @@ async function runPixelAgent(config: OrchestratorConfig) {
           }
           const nearbyColors = getNearbyColors(canvasData, node.pixelX, node.pixelY);
           const emptyCells = getEmptyCells(canvasData);
+          // Compute suggested biome colors for the LLM to pick from
+          const suggestedBiomeGoal = pickBiomeGoal(canvasData, node.pixelX, node.pixelY);
           const sent = config.sendToNode(node.id, JSON.stringify({
             type: "pixelGoalRequest",
             payload: {
@@ -499,29 +574,22 @@ async function runPixelAgent(config: OrchestratorConfig) {
               nearbyColors,
               emptyCellsRemaining: emptyCells.length,
               canvasAlmostFull: emptyCells.length < 20,
+              suggestedBiome: {
+                description: suggestedBiomeGoal.description,
+                color: suggestedBiomeGoal.color,
+                biomeId: getBiomeByColor(suggestedBiomeGoal.color)?.id ?? null,
+                biomeName: getBiomeByColor(suggestedBiomeGoal.color)?.name ?? null,
+                biomeEmoji: getBiomeByColor(suggestedBiomeGoal.color)?.emoji ?? null,
+              },
+              availableBiomes: BIOMES.filter(b => b.passable).map(b => ({
+                id: b.id, name: b.name, color: b.color, emoji: b.emoji,
+                description: b.description,
+              })),
             },
           }));
 
           if (!sent) {
-            const WORLD_GOALS = [
-              { description: "Claiming an empty patch of land", color: "#8FAF8A" },
-              { description: "Building a small wooden house", color: "#8B4513" },
-              { description: "Planting a green tree", color: "#228B22" },
-              { description: "Laying a stone road", color: "#808080" },
-              { description: "Digging a blue river", color: "#4169E1" },
-              { description: "Constructing a red-roofed cottage", color: "#CC0000" },
-              { description: "Growing a flower garden", color: "#FF69B4" },
-              { description: "Building a castle tower", color: "#696969" },
-              { description: "Painting a golden sun", color: "#FFD700" },
-              { description: "Adding stars to the sky", color: "#FFFFFF" },
-              { description: "Adding fine district detail", color: "#7AADAD" },
-              { description: "Decorating a district with texture", color: "#A98EC4" },
-              { description: "Building a wooden fence", color: "#DEB887" },
-              { description: "Creating a mountain peak", color: "#A9A9A9" },
-              { description: "Planting crops in a field", color: "#9ACD32" },
-              { description: "Adding windows to a building", color: "#87CEEB" },
-            ];
-            const worldGoal = WORLD_GOALS[Math.floor(Math.random() * WORLD_GOALS.length)];
+            const worldGoal = pickBiomeGoal(canvasData, node.pixelX, node.pixelY);
             let targetX: number;
             let targetY: number;
             if (emptyCells.length > 0 && Math.random() < 0.7) {

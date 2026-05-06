@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Coins, Paintbrush, Minus, Plus, RotateCcw, MapPin, Crosshair, X, MessageCircle, ZoomIn, Grid3X3, Zap } from "lucide-react";
+import { Coins, Paintbrush, Minus, Plus, RotateCcw, MapPin, Crosshair, X, MessageCircle, ZoomIn, Grid3X3, Zap, Globe } from "lucide-react";
+import { getBiomeByColor, BIOMES } from "@shared/biomes";
 
 const CANVAS_SIZE = 32;
 const CELL_SIZE = 16;
@@ -65,6 +66,7 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
   const [wallPushTarget, setWallPushTarget] = useState<{ wallId: number; wallX: number; wallY: number } | null>(null);
   const [wallPushDirection, setWallPushDirection] = useState<"up" | "down" | "left" | "right">("up");
   const [zoomedRegion, setZoomedRegion] = useState<{ x: number; y: number } | null>(null);
+  const [showBiomeLegend, setShowBiomeLegend] = useState(false);
   const [liveSubPixels, setLiveSubPixels] = useState<Map<string, { color: string; nodeName: string }>>(new Map());
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const mouseDownPosRef = useRef({ x: 0, y: 0 });
@@ -835,6 +837,16 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setFollowing(false); }} data-testid="button-zoom-reset">
               <RotateCcw className="w-3 h-3" />
             </Button>
+            <Button
+              variant={showBiomeLegend ? "default" : "ghost"}
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => setShowBiomeLegend(v => !v)}
+              title="Toggle biome legend"
+              data-testid="button-biome-legend-toggle"
+            >
+              <Globe className="w-3 h-3" />
+            </Button>
           </div>
         </div>
 
@@ -1059,18 +1071,51 @@ export function PixelCanvas({ nodeId, autoFollow = false }: PixelCanvasProps) {
           )}
         </div>
 
-        {hoveredCell && (
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span className="font-mono" data-testid="text-hover-coords">
-              ({hoveredCell.x}, {hoveredCell.y})
-              {currentPixelColor && currentPixelColor !== "#000000" && (
-                <span className="ml-2 inline-flex items-center gap-1">
-                  <span className="w-2.5 h-2.5 rounded-sm border border-white/20 inline-block" style={{ backgroundColor: currentPixelColor }} />
-                  {currentPixelColor}
+        {hoveredCell && (() => {
+          const hovBiome = currentPixelColor && currentPixelColor !== "#000000"
+            ? getBiomeByColor(currentPixelColor)
+            : null;
+          return (
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span className="font-mono" data-testid="text-hover-coords">
+                ({hoveredCell.x}, {hoveredCell.y})
+                {currentPixelColor && currentPixelColor !== "#000000" && (
+                  <span className="ml-2 inline-flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-sm border border-white/20 inline-block" style={{ backgroundColor: currentPixelColor }} />
+                    {hovBiome
+                      ? <span className="text-foreground/80">{hovBiome.emoji} {hovBiome.name}</span>
+                      : <span>{currentPixelColor}</span>
+                    }
+                  </span>
+                )}
+                {!currentPixelColor || currentPixelColor === "#000000"
+                  ? <span className="ml-2 text-muted-foreground/40">empty</span>
+                  : null
+                }
+                <span className="ml-2 text-muted-foreground/40">click → history</span>
+              </span>
+              {hovBiome && (
+                <span className="text-[10px] text-muted-foreground/60 italic max-w-[45%] text-right truncate" title={hovBiome.description}>
+                  {hovBiome.description}
                 </span>
               )}
-              <span className="ml-2 text-muted-foreground/50">click → history + district view</span>
-            </span>
+            </div>
+          );
+        })()}
+
+        {showBiomeLegend && (
+          <div className="grid grid-cols-3 gap-1 bg-black/40 rounded-lg border border-white/10 p-2" data-testid="panel-biome-legend">
+            {BIOMES.map(b => (
+              <div key={b.id} className="flex items-center gap-1.5 text-[10px]" title={b.description} data-testid={`biome-legend-${b.id}`}>
+                <span className="w-3 h-3 rounded-sm border border-white/15 shrink-0" style={{ backgroundColor: b.color }} />
+                <span className={`truncate ${b.passable ? "text-muted-foreground" : "text-muted-foreground/40 line-through"}`}>
+                  {b.emoji} {b.name}
+                </span>
+              </div>
+            ))}
+            <div className="col-span-3 text-[9px] text-muted-foreground/40 pt-0.5 border-t border-white/5 mt-0.5">
+              Strikethrough = impassable terrain
+            </div>
           </div>
         )}
 

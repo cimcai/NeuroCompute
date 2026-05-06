@@ -9,6 +9,7 @@ import * as cimc from "./cimc";
 import { startOrchestrator } from "./agent-orchestrator";
 import { logger } from "./logger";
 import { runDailyReport, buildReport, renderEmailHtml, buildAnalyticsData, renderAnalyticsEmailHtml } from "./analytics";
+import { BIOMES, getBiomeByColor } from "@shared/biomes";
 
 let pixelHistoryCache: any[] = [];
 let pixelCacheTotal = 0;
@@ -1161,6 +1162,125 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to transfer energy" });
     }
   });
+
+  // ─── World Map API (public, CORS-enabled for third-party game access) ───────
+  const worldCors = (_req: any, res: any, next: any) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    next();
+  };
+
+  app.options(/^\/api\/world\//, worldCors, (_req, res) => res.sendStatus(204));
+
+  app.get("/api/world/biomes", worldCors, (_req, res) => {
+    res.json({ biomes: BIOMES });
+  });
+
+  app.get("/api/world/map", worldCors, async (_req, res) => {
+    try {
+      const canvasData = await cimc.getCanvas();
+      const grid = canvasData?.grid ?? [];
+      const annotated: any[][] = [];
+      const biomeCounts: Record<string, number> = {};
+      for (let y = 0; y < 32; y++) {
+        annotated[y] = [];
+        for (let x = 0; x < 32; x++) {
+          const color: string = grid[y]?.[x] ?? "#000000";
+          const biome = color === "#000000" ? null : getBiomeByColor(color);
+          if (biome) biomeCounts[biome.id] = (biomeCounts[biome.id] ?? 0) + 1;
+          annotated[y][x] = {
+            x, y, color,
+            biomeId: biome?.id ?? null,
+            biomeName: biome?.name ?? null,
+            biomeEmoji: biome?.emoji ?? null,
+            terrain: biome?.terrain ?? null,
+            passable: biome?.passable ?? true,
+          };
+        }
+      }
+      const walls = await storage.getWalls();
+      for (const w of walls) {
+        if (annotated[w.y]?.[w.x]) {
+          annotated[w.y][w.x].wall = true;
+          annotated[w.y][w.x].passable = false;
+        }
+      }
+      const nodes = await storage.getNodes();
+      const agents = nodes
+        .filter(n => n.status === "computing")
+        .map(n => ({ id: n.id, name: n.displayName || n.name, x: n.pixelX, y: n.pixelY, pixelCredits: n.pixelCredits }));
+      res.json({
+        generatedAt: new Date().toISOString(),
+        width: 32, height: 32,
+        cells: annotated,
+        walls: walls.map(w => ({ x: w.x, y: w.y })),
+        agents,
+        biomeSummary: Object.entries(biomeCounts)
+          .map(([id, count]) => ({ biomeId: id, cells: count }))
+          .sort((a, b) => b.cells - a.cells),
+      });
+    } catch (err) {
+      logger.error("api", "World map error", err);
+      res.status(500).json({ message: "Failed to fetch world map" });
+    }
+  });
+
+  app.get("/api/world/cell/:x/:y", worldCors, async (req, res) => {
+    try {
+      const x = Number(req.params.x);
+      const y = Number(req.params.y);
+      if (isNaN(x) || isNaN(y) || x < 0 || x > 31 || y < 0 || y > 31) {
+        return res.status(400).json({ message: "x and y must be 0–31" });
+      }
+      const canvasData = await cimc.getCanvas();
+      const color: string = canvasData?.grid?.[y]?.[x] ?? "#000000";
+      const biome = color === "#000000" ? null : getBiomeByColor(color);
+      const wall = await storage.getWallAt(x, y);
+      const nodes = await storage.getNodes();
+      const occupants = nodes
+        .filter(n => n.pixelX === x && n.pixelY === y && n.status === "computing")
+        .map(n => ({ id: n.id, name: n.displayName || n.name }));
+      const subPixels = await storage.getSubPixels(x, y);
+      res.json({ x, y, color, biome, wall: !!wall, occupants, subPixelCount: subPixels.length });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch cell" });
+    }
+  });
+
+  app.get("/api/world/state", worldCors, async (_req, res) => {
+    try {
+      const [nodes, walls, messages] = await Promise.all([
+        storage.getNodes(),
+        storage.getWalls(),
+        storage.getMessages(5),
+      ]);
+      const active = nodes.filter(n => n.status === "computing");
+      res.json({
+        generatedAt: new Date().toISOString(),
+        network: {
+          totalNodes: nodes.length,
+          activeAgents: active.length,
+          totalTokens: nodes.reduce((s, n) => s + n.totalTokens, 0),
+          totalPixels: nodes.reduce((s, n) => s + n.pixelsPlaced, 0),
+        },
+        agents: active.map(n => ({
+          id: n.id,
+          name: n.displayName || n.name,
+          x: n.pixelX, y: n.pixelY,
+          pixelCredits: n.pixelCredits,
+          totalTokens: n.totalTokens,
+        })),
+        walls: walls.map(w => ({ x: w.x, y: w.y })),
+        recentMessages: messages.map(m => ({ role: m.role, content: m.content, senderName: m.senderName })),
+        biomes: BIOMES.map(b => ({ id: b.id, name: b.name, color: b.color, emoji: b.emoji })),
+      });
+    } catch (err) {
+      logger.error("api", "World state error", err);
+      res.status(500).json({ message: "Failed to fetch world state" });
+    }
+  });
+  // ─── End World Map API ────────────────────────────────────────────────────
 
   await storage.markAllNodesOffline();
   console.log("[startup] Reset all stale nodes to offline");

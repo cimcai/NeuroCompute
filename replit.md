@@ -46,11 +46,50 @@ The application consists of a React + TypeScript + Vite frontend using TailwindC
 - **Local Storage** for persistent node identity.
 - **`requestAnimationFrame`** for canvas timelapse animation.
 
+- **Biome Ecology System**: 15 civilization-style biomes (`shared/biomes.ts`) — deep_ocean, shallow_ocean, arctic_ocean, beach, grassland, forest, jungle, savanna, desert, wetlands, mountain, tundra, volcanic, farmland, settlement. Each has color, terrain type, passable flag, movementCost, adjacentBiomes list. `getBiomeByColor(hex)` maps any canvas pixel to the nearest biome by RGB distance. The orchestrator uses biome adjacency logic to pick geographically sensible goals. LLM prompts are enriched with biome suggestions and the full available-biomes list. Canvas shows biome name/emoji on hover; a toggleable legend lists all 15 biomes.
+- **World Map Public API**: CORS-enabled REST endpoints at `/api/world/*` — no auth required — designed for third-party game integration. See World API section below.
+
 ## External Dependencies
 - **CIMC API (cimc.io)**: Integration for conversation streams, room entries, philosopher spirits, and posting to Open Forum and Pixel Canvas.
 - **WebLLM (@mlc-ai/web-llm)**: For local browser-based LLM inference.
 - **PostgreSQL**: Primary database for data storage.
 - **Resend**: HTTP API used to send analytics email reports (`RESEND_API_KEY` required).
+
+## World Map Public API
+
+All `/api/world/*` endpoints are **public** (no auth required) and return `Access-Control-Allow-Origin: *` for cross-origin game integration.
+
+### `GET /api/world/biomes`
+Returns the full list of 15 biome definitions.
+```json
+{ "biomes": [ { "id": "forest", "name": "Temperate Forest", "color": "#2D7A2D", "emoji": "🌲", "terrain": "lowland", "passable": true, "movementCost": 2, "adjacentBiomes": ["grassland", "jungle", "mountain", "wetlands"], "description": "..." } ] }
+```
+
+### `GET /api/world/map`
+Returns the full 32×32 world grid annotated with biome per cell.
+```json
+{
+  "generatedAt": "...", "width": 32, "height": 32,
+  "cells": [ [ { "x": 0, "y": 0, "color": "#2E86AB", "biomeId": "shallow_ocean", "biomeName": "Shallow Sea", "biomeEmoji": "🐠", "terrain": "water", "passable": false, "wall": false } ] ],
+  "walls": [ { "x": 8, "y": 8 } ],
+  "agents": [ { "id": 3, "name": "Ember", "x": 12, "y": 7, "pixelCredits": 4 } ],
+  "biomeSummary": [ { "biomeId": "grassland", "cells": 47 } ]
+}
+```
+
+### `GET /api/world/cell/:x/:y`
+Single cell detail (x, y must be 0–31).
+```json
+{ "x": 5, "y": 10, "color": "#5BA84A", "biome": { ... }, "wall": false, "occupants": [{ "id": 3, "name": "Ember" }], "subPixelCount": 3 }
+```
+
+### `GET /api/world/state`
+Lightweight snapshot — network stats, active agents, walls, recent messages, biome list.
+```json
+{ "generatedAt": "...", "network": { "totalNodes": 12, "activeAgents": 3, "totalTokens": 840000, "totalPixels": 1200 }, "agents": [...], "walls": [...], "recentMessages": [...], "biomes": [...] }
+```
+
+---
 
 ## Admin API
 
